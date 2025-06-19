@@ -4,13 +4,14 @@ import 'package:get/get.dart';
 
 class EditAchatIndividuelForm extends StatefulWidget {
   final String collecteId;
-  final String achatId;
+  final String achatDocId; // id du doc unique dans "Individuel"
+  final int indexProduit; // index du produit dans le tableau details
   final String infoId;
 
-  // Il faut fournir l'id du doc dans "Individuel" et celui de "Individuel_info"
   const EditAchatIndividuelForm({
     required this.collecteId,
-    required this.achatId,
+    required this.achatDocId,
+    required this.indexProduit,
     required this.infoId,
     super.key,
   });
@@ -23,8 +24,8 @@ class EditAchatIndividuelForm extends StatefulWidget {
 class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   final _formKey = GlobalKey<FormState>();
 
-  // Contrôleurs
-  final _quantiteCtrl = TextEditingController();
+  final _quantiteAccepteeCtrl = TextEditingController();
+  final _quantiteRejeteeCtrl = TextEditingController();
   final _prixUnitaireCtrl = TextEditingController();
 
   String? _nomIndiv;
@@ -33,7 +34,8 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   String? _unite;
   DateTime? _dateAchat;
 
-  double? _quantite;
+  double? _quantiteAcceptee;
+  double? _quantiteRejetee;
   double? _prixUnitaire;
   double? _prixTotal;
 
@@ -43,18 +45,20 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   final List<String> unites = ['kg', 'litre'];
 
   bool _loading = true;
+  List<dynamic> _details = [];
 
   @override
   void initState() {
     super.initState();
     _fetchIndividuels().then((_) => _fetchData());
-    _quantiteCtrl.addListener(_calcAndSetPrixTotal);
+    _quantiteAccepteeCtrl.addListener(_calcAndSetPrixTotal);
     _prixUnitaireCtrl.addListener(_calcAndSetPrixTotal);
   }
 
   @override
   void dispose() {
-    _quantiteCtrl.dispose();
+    _quantiteAccepteeCtrl.dispose();
+    _quantiteRejeteeCtrl.dispose();
     _prixUnitaireCtrl.dispose();
     super.dispose();
   }
@@ -69,39 +73,42 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   }
 
   Future<void> _fetchData() async {
-    // 1. Récupérer les infos de l'achat (dans la sous-collection Individuel)
     final achatDoc = await FirebaseFirestore.instance
         .collection('collectes')
         .doc(widget.collecteId)
         .collection('Individuel')
-        .doc(widget.achatId)
+        .doc(widget.achatDocId)
         .get();
     final achatData = achatDoc.data();
+    _details = (achatData?['details'] as List?) ?? [];
 
-    // 2. Récupérer les infos du producteur (dans la sous-sous-collection Individuel_info)
     final infoDoc = await FirebaseFirestore.instance
         .collection('collectes')
         .doc(widget.collecteId)
         .collection('Individuel')
-        .doc(widget.achatId)
+        .doc(widget.achatDocId)
         .collection('Individuel_info')
         .doc(widget.infoId)
         .get();
     final infoData = infoDoc.data();
 
-    if (achatData != null && infoData != null) {
+    if (_details.length > widget.indexProduit) {
+      final prod = Map<String, dynamic>.from(_details[widget.indexProduit]);
       setState(() {
-        _quantite = (achatData['quantite'] as num?)?.toDouble();
-        _prixUnitaire = (achatData['prixUnitaire'] as num?)?.toDouble();
-        _prixTotal = (achatData['prixTotal'] as num?)?.toDouble();
-        _typeProduit = achatData['typeProduit'];
-        _typeRuche = achatData['typeRuche'];
-        _unite = achatData['unite'];
-        _dateAchat = (achatData['dateAchat'] as Timestamp?)?.toDate();
+        _typeRuche = prod['typeRuche'] as String?;
+        _typeProduit = prod['typeProduit'] as String?;
+        _quantiteAcceptee = (prod['quantiteAcceptee'] as num?)?.toDouble();
+        _quantiteRejetee = (prod['quantiteRejetee'] as num?)?.toDouble();
+        _unite = prod['unite'] as String?;
+        _prixUnitaire = (prod['prixUnitaire'] as num?)?.toDouble();
+        _prixTotal = (prod['prixTotal'] as num?)?.toDouble();
+        _dateAchat = achatData?['dateAchat'] is Timestamp
+            ? (achatData?['dateAchat'] as Timestamp).toDate()
+            : null;
 
-        _nomIndiv = infoData['nomPrenom'];
-
-        _quantiteCtrl.text = _quantite?.toString() ?? '';
+        _nomIndiv = infoData?['nomPrenom'];
+        _quantiteAccepteeCtrl.text = _quantiteAcceptee?.toString() ?? '';
+        _quantiteRejeteeCtrl.text = _quantiteRejetee?.toString() ?? '';
         _prixUnitaireCtrl.text = _prixUnitaire?.toString() ?? '';
         _calcAndSetPrixTotal();
         _loading = false;
@@ -114,58 +121,51 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   }
 
   void _calcAndSetPrixTotal() {
-    final q = double.tryParse(_quantiteCtrl.text) ?? 0;
+    final q = double.tryParse(_quantiteAccepteeCtrl.text) ?? 0;
     final pu = double.tryParse(_prixUnitaireCtrl.text) ?? 0;
     setState(() {
-      _quantite = q == 0 ? null : q;
+      _quantiteAcceptee = q == 0 ? null : q;
       _prixUnitaire = pu == 0 ? null : pu;
-      if (_quantite != null && _prixUnitaire != null) {
-        _prixTotal = _quantite! * _prixUnitaire!;
+      if (_quantiteAcceptee != null && _prixUnitaire != null) {
+        _prixTotal = _quantiteAcceptee! * _prixUnitaire!;
       } else {
         _prixTotal = null;
       }
     });
   }
 
-  void _resetForm() {
-    setState(() {
-      _nomIndiv = null;
-      _typeRuche = null;
-      _typeProduit = null;
-      _quantite = null;
-      _unite = null;
-      _prixUnitaire = null;
-      _prixTotal = null;
-      _dateAchat = null;
-      _quantiteCtrl.clear();
-      _prixUnitaireCtrl.clear();
-    });
-  }
-
   Future<void> _updateData() async {
     try {
-      // 1. Mettre à jour les infos de l'achat
+      List<dynamic> updatedDetails = List.from(_details);
+      if (updatedDetails.length <= widget.indexProduit) {
+        throw Exception("Index produit invalide");
+      }
+      Map<String, dynamic> prod =
+          Map<String, dynamic>.from(updatedDetails[widget.indexProduit]);
+      prod['typeRuche'] = _typeRuche;
+      prod['typeProduit'] = _typeProduit;
+      prod['quantiteAcceptee'] = _quantiteAcceptee;
+      prod['quantiteRejetee'] = _quantiteRejetee;
+      prod['unite'] = _unite;
+      prod['prixUnitaire'] = _prixUnitaire;
+      prod['prixTotal'] = _prixTotal;
+      updatedDetails[widget.indexProduit] = prod;
+
       await FirebaseFirestore.instance
           .collection('collectes')
           .doc(widget.collecteId)
           .collection('Individuel')
-          .doc(widget.achatId)
+          .doc(widget.achatDocId)
           .update({
-        'typeRuche': _typeRuche,
-        'typeProduit': _typeProduit,
-        'quantite': _quantite,
-        'unite': _unite,
-        'prixUnitaire': _prixUnitaire,
-        'prixTotal': _prixTotal,
+        'details': updatedDetails,
         'dateAchat': _dateAchat,
       });
 
-      // 2. Mettre à jour les infos du producteur individuel associé
       await FirebaseFirestore.instance
           .collection('collectes')
           .doc(widget.collecteId)
           .collection('Individuel')
-          .doc(widget.achatId)
+          .doc(widget.achatDocId)
           .collection('Individuel_info')
           .doc(widget.infoId)
           .update({
@@ -179,8 +179,7 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );
-      _resetForm();
-      Get.back();
+      Navigator.of(context).pop(); // <-- Retour à la page précédente
     } catch (e) {
       Get.snackbar(
         "Erreur",
@@ -196,7 +195,8 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
     return _nomIndiv != null &&
         _typeRuche != null &&
         _typeProduit != null &&
-        _quantite != null &&
+        _quantiteAcceptee != null &&
+        _quantiteRejetee != null &&
         _unite != null &&
         _prixUnitaire != null &&
         _prixTotal != null &&
@@ -206,111 +206,136 @@ class _EditAchatIndividuelFormState extends State<EditAchatIndividuelForm> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return Center(child: CircularProgressIndicator());
+      return Scaffold(
+        appBar: AppBar(
+          title: Text("Modifier Achat Individuel"),
+          backgroundColor: Colors.amber[700],
+        ),
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
-    return Padding(
-      padding: EdgeInsets.all(20),
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            DropdownButtonFormField<String>(
-              value: _nomIndiv,
-              decoration: InputDecoration(labelText: "Producteur individuel"),
-              items: individuelsConnus
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) => setState(() => _nomIndiv = v),
-              validator: (v) => v == null ? "Sélectionner un producteur" : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: _typeRuche,
-              decoration: InputDecoration(labelText: "Type de ruche"),
-              items: typesRuche
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                  .toList(),
-              onChanged: (v) => setState(() => _typeRuche = v),
-              validator: (v) =>
-                  v == null ? "Sélectionner le type de ruche" : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: _typeProduit,
-              decoration: InputDecoration(labelText: "Type de produit"),
-              items: typesProduit
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                  .toList(),
-              onChanged: (v) => setState(() => _typeProduit = v),
-              validator: (v) =>
-                  v == null ? "Sélectionner le type de produit" : null,
-            ),
-            TextFormField(
-              controller: _quantiteCtrl,
-              decoration: InputDecoration(labelText: "Quantité"),
-              keyboardType: TextInputType.number,
-              validator: (v) =>
-                  v == null || v.isEmpty || double.tryParse(v) == null
-                      ? "Obligatoire"
-                      : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: _unite,
-              decoration: InputDecoration(labelText: "Unité"),
-              items: unites
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                  .toList(),
-              onChanged: (v) => setState(() => _unite = v),
-              validator: (v) => v == null ? "Sélectionner l'unité" : null,
-            ),
-            TextFormField(
-              controller: _prixUnitaireCtrl,
-              decoration: InputDecoration(labelText: "Prix unitaire"),
-              keyboardType: TextInputType.number,
-              validator: (v) =>
-                  v == null || v.isEmpty || double.tryParse(v) == null
-                      ? "Obligatoire"
-                      : null,
-            ),
-            TextFormField(
-              enabled: false,
-              decoration: InputDecoration(labelText: "Prix total"),
-              style: TextStyle(
-                  color: Colors.blueGrey[600], fontWeight: FontWeight.bold),
-              controller: TextEditingController(
-                text: _prixTotal != null ? _prixTotal!.toStringAsFixed(2) : "",
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Modifier Achat Individuel"),
+        backgroundColor: Colors.amber[700],
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              DropdownButtonFormField<String>(
+                value: _nomIndiv,
+                decoration: InputDecoration(labelText: "Producteur individuel"),
+                items: individuelsConnus
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
+                onChanged: (v) => setState(() => _nomIndiv = v),
+                validator: (v) =>
+                    v == null ? "Sélectionner un producteur" : null,
               ),
-            ),
-            ListTile(
-              title: Text(_dateAchat != null
-                  ? "Date d'achat: ${_dateAchat!.day}/${_dateAchat!.month}/${_dateAchat!.year}"
-                  : "Date d'achat"),
-              trailing: Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _dateAchat ?? DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (picked != null) setState(() => _dateAchat = picked);
-              },
-            ),
-            SizedBox(height: 20),
-            ElevatedButton.icon(
-                icon: Icon(Icons.save),
-                label: Text("Enregistrer les modifications"),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber[700]),
-                onPressed: () {
-                  if ((_formKey.currentState?.validate() ?? false) &&
-                      _allFieldsFilled()) {
-                    _updateData();
-                  } else {
-                    Get.snackbar(
-                        "Erreur", "Veuillez remplir tous les champs !");
-                  }
-                }),
-          ],
+              DropdownButtonFormField<String>(
+                value: _typeRuche,
+                decoration: InputDecoration(labelText: "Type de ruche"),
+                items: typesRuche
+                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                    .toList(),
+                onChanged: (v) => setState(() => _typeRuche = v),
+                validator: (v) =>
+                    v == null ? "Sélectionner le type de ruche" : null,
+              ),
+              DropdownButtonFormField<String>(
+                value: _typeProduit,
+                decoration: InputDecoration(labelText: "Type de produit"),
+                items: typesProduit
+                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                    .toList(),
+                onChanged: (v) => setState(() => _typeProduit = v),
+                validator: (v) =>
+                    v == null ? "Sélectionner le type de produit" : null,
+              ),
+              TextFormField(
+                controller: _quantiteAccepteeCtrl,
+                decoration: InputDecoration(labelText: "Quantité acceptée"),
+                keyboardType: TextInputType.number,
+                validator: (v) =>
+                    v == null || v.isEmpty || double.tryParse(v) == null
+                        ? "Obligatoire"
+                        : null,
+              ),
+              TextFormField(
+                controller: _quantiteRejeteeCtrl,
+                decoration: InputDecoration(labelText: "Quantité rejetée"),
+                keyboardType: TextInputType.number,
+                onChanged: (v) =>
+                    setState(() => _quantiteRejetee = double.tryParse(v)),
+                validator: (v) =>
+                    v == null || v.isEmpty || double.tryParse(v) == null
+                        ? "Obligatoire"
+                        : null,
+              ),
+              DropdownButtonFormField<String>(
+                value: _unite,
+                decoration: InputDecoration(labelText: "Unité"),
+                items: unites
+                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                    .toList(),
+                onChanged: (v) => setState(() => _unite = v),
+                validator: (v) => v == null ? "Sélectionner l'unité" : null,
+              ),
+              TextFormField(
+                controller: _prixUnitaireCtrl,
+                decoration: InputDecoration(labelText: "Prix unitaire"),
+                keyboardType: TextInputType.number,
+                validator: (v) =>
+                    v == null || v.isEmpty || double.tryParse(v) == null
+                        ? "Obligatoire"
+                        : null,
+              ),
+              TextFormField(
+                enabled: false,
+                decoration: InputDecoration(labelText: "Prix total"),
+                style: TextStyle(
+                    color: Colors.blueGrey[600], fontWeight: FontWeight.bold),
+                controller: TextEditingController(
+                  text:
+                      _prixTotal != null ? _prixTotal!.toStringAsFixed(2) : "",
+                ),
+              ),
+              ListTile(
+                title: Text(_dateAchat != null
+                    ? "Date d'achat: ${_dateAchat!.day}/${_dateAchat!.month}/${_dateAchat!.year}"
+                    : "Date d'achat"),
+                trailing: Icon(Icons.calendar_today),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _dateAchat ?? DateTime.now(),
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) setState(() => _dateAchat = picked);
+                },
+              ),
+              SizedBox(height: 20),
+              ElevatedButton.icon(
+                  icon: Icon(Icons.save),
+                  label: Text("Enregistrer les modifications"),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber[700]),
+                  onPressed: () {
+                    if ((_formKey.currentState?.validate() ?? false) &&
+                        _allFieldsFilled()) {
+                      _updateData();
+                    } else {
+                      Get.snackbar(
+                          "Erreur", "Veuillez remplir tous les champs !");
+                    }
+                  }),
+            ],
+          ),
         ),
       ),
     );

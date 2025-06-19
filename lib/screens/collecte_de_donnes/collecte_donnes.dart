@@ -1,6 +1,7 @@
 import 'package:apisavana_gestion/controllers/collecte_controller.dart';
 import 'package:apisavana_gestion/data/geographe/geographie.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/selecteur_florale.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/widgets/validators.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
@@ -140,202 +141,15 @@ class CollectePage extends StatelessWidget {
     );
   }
 
-  Widget _formulaireRecolte(BuildContext context) {
-    final c = Get.find<CollecteController>();
-    final formKey = GlobalKey<FormState>();
+  // --- ACHAT > SCOOPS
+  // --- ACHAT > SCOOPS
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: formKey,
-          child: Column(
-            children: [
-              // Technicien
-              DropdownSearch<String>(
-                items: c.techniciens, // Ta liste statique
-                selectedItem: c.nomRecolteur.value,
-                onChanged: (v) => c.nomRecolteur.value = v,
-                validator: (v) =>
-                    v == null ? "Sélectionner un technicien" : null,
-                dropdownDecoratorProps: DropDownDecoratorProps(
-                  dropdownSearchDecoration:
-                      InputDecoration(labelText: "Technicien"),
-                ),
-                popupProps: PopupProps.menu(
-                  showSearchBox: true,
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(labelText: "Rechercher..."),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-              // Région
-              DropdownSearch<String>(
-                items: regionsBurkina,
-                selectedItem: c.region.value,
-                onChanged: (v) {
-                  c.region.value = v;
-                  c.province.value = null;
-                  c.commune.value = null;
-                  c.village.value = null;
-                },
-                validator: (v) => v == null ? "Sélectionner une région" : null,
-                dropdownDecoratorProps: DropDownDecoratorProps(
-                  dropdownSearchDecoration:
-                      InputDecoration(labelText: "Région"),
-                ),
-                popupProps: PopupProps.menu(
-                  showSearchBox: true,
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(labelText: "Rechercher..."),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-              // Province (filtrée par région)
-              Obx(() {
-                final provinces = c.getProvincesForRegion(c.region.value);
-                return DropdownSearch<String>(
-                  items: provinces,
-                  selectedItem: c.province.value,
-                  onChanged: (v) {
-                    c.province.value = v;
-                    c.commune.value = null;
-                    c.village.value = null;
-                  },
-                  validator: (v) =>
-                      v == null ? "Sélectionner une province" : null,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration:
-                        InputDecoration(labelText: "Province"),
-                  ),
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration: InputDecoration(labelText: "Rechercher..."),
-                    ),
-                  ),
-                );
-              }),
-              SizedBox(height: 16),
-              // Commune (filtrée par province)
-              Obx(() {
-                final communes = c.getCommunesForProvince(c.province.value);
-                return DropdownSearch<String>(
-                  items: communes,
-                  selectedItem: c.commune.value,
-                  onChanged: (v) {
-                    c.commune.value = v;
-                    c.village.value = null;
-                  },
-                  validator: (v) =>
-                      v == null ? "Sélectionner une commune" : null,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration:
-                        InputDecoration(labelText: "Commune"),
-                  ),
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration: InputDecoration(labelText: "Rechercher..."),
-                    ),
-                  ),
-                );
-              }),
-              SizedBox(height: 16),
-              // Village (à venir)
-              Obx(() {
-                final villages = c.getVillagesForCommune(c.commune.value);
-
-                return DropdownSearch<String>(
-                  items: villages,
-                  selectedItem: c.village.value,
-                  onChanged: (v) => c.village.value = v,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration:
-                        InputDecoration(labelText: "Village"),
-                  ),
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    showSelectedItems: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration:
-                          InputDecoration(labelText: "Rechercher ou saisir..."),
-                    ),
-                    // Pour afficher la recherche même si la liste est vide
-                    emptyBuilder: (context, searchEntry) {
-                      // Permet de proposer d'ajouter le nouveau village
-                      return ListTile(
-                        title: Text('Ajouter "$searchEntry" comme village'),
-                        onTap: () {
-                          c.village.value = searchEntry;
-                          Navigator.of(context).pop();
-                        },
-                      );
-                    },
-                  ),
-                  validator: (v) => v == null || v.isEmpty
-                      ? "Sélectionner ou saisir un village"
-                      : null,
-                );
-              }),
-              SizedBox(height: 16),
-              // Quantité récoltée
-              TextFormField(
-                decoration: InputDecoration(
-                    labelText: "Quantité (kg)",
-                    suffixText: "kg",
-                    prefixIcon: Icon(Icons.balance, color: Colors.brown[400])),
-                keyboardType: TextInputType.number,
-                onChanged: (v) => c.quantiteRecolte.value = double.tryParse(v),
-                validator: (v) =>
-                    v == null || v.isEmpty || double.tryParse(v) == null
-                        ? "Obligatoire"
-                        : null,
-              ),
-              SizedBox(height: 16),
-              // Nombre de ruches récoltées
-              TextFormField(
-                decoration: InputDecoration(
-                    labelText: "Nombre de ruches récoltées",
-                    prefixIcon: Icon(Icons.hive_rounded, color: Colors.amber)),
-                keyboardType: TextInputType.number,
-                onChanged: (v) =>
-                    c.nbRuchesRecoltees.value = int.tryParse(v ?? ""),
-                validator: (v) =>
-                    v == null || v.isEmpty || int.tryParse(v) == null
-                        ? "Obligatoire"
-                        : null,
-              ),
-              MultiSelectFlorale(c),
-              SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton.icon(
-                  icon: Icon(Icons.save),
-                  label: Text("Enregistrer la collecte"),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber[700]),
-                  onPressed: () async {
-                    if (formKey.currentState?.validate() ?? false) {
-                      await c.enregistrerCollecteRecolte();
-                      formKey.currentState?.reset();
-                    } else {
-                      Get.snackbar(
-                          "Erreur", "Veuillez remplir tous les champs !");
-                    }
-                  },
-                ),
-              ),
-              boutonRetour(context),
-            ],
-          ),
-        ),
-      ),
-    );
+  List<String> _processSelection(dynamic selectedItems) {
+    if (selectedItems is List<String>) return selectedItems;
+    if (selectedItems is String) return [selectedItems];
+    if (selectedItems is Iterable)
+      return selectedItems.map((e) => e.toString()).toList();
+    return [];
   }
 
   Widget _formulaireAchat(BuildContext context) {
@@ -392,14 +206,370 @@ class CollectePage extends StatelessWidget {
     );
   }
 
-  // --- ACHAT > SCOOPS
-  // --- ACHAT > SCOOPS
-  List<String> _processSelection(dynamic selectedItems) {
-    if (selectedItems is List<String>) return selectedItems;
-    if (selectedItems is String) return [selectedItems];
-    if (selectedItems is Iterable)
-      return selectedItems.map((e) => e.toString()).toList();
-    return [];
+  Widget _formulaireAchatIndividuel() {
+    final c = Get.find<CollecteController>();
+    final _formKey = GlobalKey<FormState>();
+
+    return Obx(() => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Recherche Producteur individuel ou Ajouter",
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownSearch<String>(
+                    items: c.individuelsConnus,
+                    selectedItem: c.selectedIndividuel.value,
+                    onChanged: (v) {
+                      c.selectedIndividuel.value = v;
+                      c.isAddingIndividuel.value = false;
+                    },
+                    dropdownDecoratorProps: DropDownDecoratorProps(
+                      dropdownSearchDecoration: InputDecoration(
+                        labelText: "Sélectionner un producteur",
+                        prefixIcon: Icon(Icons.person, color: Colors.green),
+                      ),
+                    ),
+                    popupProps: PopupProps.menu(
+                      showSearchBox: true,
+                      searchFieldProps: TextFieldProps(
+                        decoration: InputDecoration(labelText: "Rechercher..."),
+                      ),
+                    ),
+                    validator: (v) =>
+                        v == null ? "Sélectionner un producteur" : null,
+                  ),
+                ),
+                SizedBox(width: 10),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.add),
+                  label: Text("Ajouter Individuel"),
+                  onPressed: () => c.isAddingIndividuel.value = true,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[700]),
+                ),
+              ],
+            ),
+            if (c.isAddingIndividuel.value) _formulaireAjouterIndividuel(),
+            if (c.selectedIndividuel.value != null &&
+                !c.isAddingIndividuel.value)
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(height: 22),
+                    Text("Types de ruches",
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Wrap(
+                      spacing: 8,
+                      children: c.typesRuche.map((ruche) {
+                        final isSelected =
+                            c.typesRucheAchatIndivMulti.contains(ruche);
+                        return CustomMultiSelectCard(
+                          value: ruche,
+                          label: ruche,
+                          selected: isSelected,
+                          onTap: () {
+                            if (isSelected) {
+                              c.typesRucheAchatIndivMulti.remove(ruche);
+                              c.typesProduitAchatIndivMulti.remove(ruche);
+                              c.achatsIndivParRucheProduit.remove(ruche);
+                            } else {
+                              c.typesRucheAchatIndivMulti.add(ruche);
+                              c.typesProduitAchatIndivMulti
+                                  .putIfAbsent(ruche, () => <String>[].obs);
+                              c.achatsIndivParRucheProduit
+                                  .putIfAbsent(ruche, () => {});
+                            }
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    SizedBox(height: 16),
+                    ...c.typesRucheAchatIndivMulti.map((ruche) => Card(
+                          color: Colors.amber[50],
+                          elevation: 1,
+                          margin: EdgeInsets.only(bottom: 12),
+                          child: Padding(
+                            padding: EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.house, color: Colors.amber[800]),
+                                    SizedBox(width: 6),
+                                    Text("Ruche : $ruche",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  children: c.typesProduit.map((produit) {
+                                    final isSelected = (c
+                                            .typesProduitAchatIndivMulti[ruche]
+                                            ?.contains(produit)) ??
+                                        false;
+                                    return CustomMultiSelectCard(
+                                      value: produit,
+                                      label: produit,
+                                      selected: isSelected,
+                                      onTap: () {
+                                        if (isSelected) {
+                                          c.typesProduitAchatIndivMulti[ruche]
+                                              ?.remove(produit);
+                                          c.achatsIndivParRucheProduit[ruche]
+                                              ?.remove(produit);
+                                        } else {
+                                          c.typesProduitAchatIndivMulti[
+                                              ruche] ??= <String>[].obs;
+                                          c.typesProduitAchatIndivMulti[ruche]!
+                                              .add(produit);
+                                          c.achatsIndivParRucheProduit[
+                                              ruche] ??= {};
+                                          c.achatsIndivParRucheProduit[ruche]![
+                                                  produit] =
+                                              AchatProduitData(
+                                                  unite: _getUniteForProduct(
+                                                      produit));
+                                        }
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                                SizedBox(height: 8),
+                                ...((c.typesProduitAchatIndivMulti[ruche]
+                                            ?.toList() ??
+                                        [])
+                                    .map((produit) {
+                                  final achat =
+                                      c.achatsIndivParRucheProduit[ruche]
+                                          ?[produit];
+                                  if (achat == null) return SizedBox();
+                                  return Card(
+                                    color: Colors.teal[50],
+                                    child: Padding(
+                                      padding: EdgeInsets.all(8),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.liquor,
+                                                  color: Colors.teal),
+                                              SizedBox(width: 6),
+                                              Text("Produit : $produit",
+                                                  style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold)),
+                                            ],
+                                          ),
+                                          SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: TextFormField(
+                                                  decoration: InputDecoration(
+                                                    labelText:
+                                                        "Quantité acceptée",
+                                                    prefixIcon: Icon(
+                                                        Icons.check,
+                                                        color: Colors.green),
+                                                    suffixText: achat.unite,
+                                                  ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  onChanged: (v) {
+                                                    achat.quantiteAcceptee
+                                                            .value =
+                                                        double.tryParse(v) ?? 0;
+                                                  },
+                                                  validator: (v) {
+                                                    if (v == null ||
+                                                        v.isEmpty ||
+                                                        double.tryParse(v) ==
+                                                            null ||
+                                                        double.tryParse(v)! <=
+                                                            0) {
+                                                      return "Obligatoire (> 0)";
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                              SizedBox(width: 10),
+                                              Expanded(
+                                                child: TextFormField(
+                                                  decoration: InputDecoration(
+                                                    labelText:
+                                                        "Quantité rejetée",
+                                                    prefixIcon: Icon(
+                                                        Icons.close,
+                                                        color: Colors.red),
+                                                    suffixText: achat.unite,
+                                                  ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  onChanged: (v) {
+                                                    achat.quantiteRejetee
+                                                            .value =
+                                                        double.tryParse(v) ?? 0;
+                                                  },
+                                                  validator: (v) {
+                                                    if (v == null ||
+                                                        v.isEmpty ||
+                                                        double.tryParse(v) ==
+                                                            null ||
+                                                        double.tryParse(v)! <
+                                                            0) {
+                                                      return "Obligatoire (>= 0)";
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: TextFormField(
+                                                  decoration: InputDecoration(
+                                                    labelText: "Prix unitaire",
+                                                    prefixIcon: Icon(Icons.euro,
+                                                        color: Colors.blue),
+                                                  ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  onChanged: (v) {
+                                                    achat.prixUnitaire.value =
+                                                        double.tryParse(v) ?? 0;
+                                                  },
+                                                  validator: (v) {
+                                                    if (v == null ||
+                                                        v.isEmpty ||
+                                                        double.tryParse(v) ==
+                                                            null ||
+                                                        double.tryParse(v)! <=
+                                                            0) {
+                                                      return "Obligatoire (> 0)";
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                              SizedBox(width: 10),
+                                              Expanded(
+                                                child: Obx(() => Text(
+                                                      "Prix total : ${achat.prixTotal.value.toStringAsFixed(2)} ${achat.unite}",
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors
+                                                              .green[700]),
+                                                    )),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList()),
+                              ],
+                            ),
+                          ),
+                        )),
+                    SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        icon: Icon(Icons.save),
+                        label: Text("Enregistrer la collecte"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber[700],
+                        ),
+                        onPressed: () async {
+                          // Validation stricte avant enregistrement
+                          if (c.selectedIndividuel.value == null ||
+                              c.selectedIndividuel.value!.isEmpty) {
+                            showFieldError("Erreur",
+                                "Sélectionnez un producteur individuel !");
+                            return;
+                          }
+
+                          bool atLeastOneProduit = false;
+                          for (final ruche in c.typesRucheAchatIndivMulti) {
+                            for (final produit
+                                in c.typesProduitAchatIndivMulti[ruche] ?? []) {
+                              atLeastOneProduit = true;
+                              final achat =
+                                  c.achatsIndivParRucheProduit[ruche]?[produit];
+                              if (achat == null) continue;
+
+                              if (achat.quantiteAcceptee.value.isNaN ||
+                                  achat.quantiteAcceptee.value <= 0) {
+                                showFieldError("Erreur quantité",
+                                    "La quantité acceptée doit être > 0 pour '$produit' ($ruche)");
+                                return;
+                              }
+                              if (achat.quantiteRejetee.value.isNaN ||
+                                  achat.quantiteRejetee.value < 0) {
+                                showFieldError("Erreur quantité",
+                                    "La quantité rejetée doit être >= 0 pour '$produit' ($ruche)");
+                                return;
+                              }
+                              if (achat.prixUnitaire.value.isNaN ||
+                                  achat.prixUnitaire.value <= 0) {
+                                showFieldError("Erreur prix",
+                                    "Le prix unitaire doit être > 0 pour '$produit' ($ruche)");
+                                return;
+                              }
+                            }
+                          }
+                          if (!atLeastOneProduit) {
+                            showFieldError(
+                                "Erreur", "Ajoutez au moins un produit !");
+                            return;
+                          }
+
+                          final snapshot = await FirebaseFirestore.instance
+                              .collection('Individuels')
+                              .where('nomPrenom',
+                                  isEqualTo: c.selectedIndividuel.value)
+                              .limit(1)
+                              .get();
+
+                          if (snapshot.docs.isEmpty) {
+                            showFieldError("Erreur", "Individuel non trouvé !");
+                            return;
+                          }
+
+                          final individuelInfo = snapshot.docs.first.data();
+
+                          final achatDetails = c.generateAchatIndivData();
+
+                          await c.enregistrerCollecteAchat(
+                            isScoops: false,
+                            achatDetails: achatDetails,
+                            fournisseurDetails: individuelInfo,
+                          );
+                          Get.snackbar("Succès", "Collecte enregistrée !");
+                          c.selectedIndividuel.value = null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ));
   }
 
   Widget _formulaireAchatScoops() {
@@ -562,6 +732,33 @@ class CollectePage extends StatelessWidget {
                             return;
                           }
 
+                          // Exemples de validation AVANT toute sauvegarde
+                          if (!validateDropdown(
+                              c.selectedSCOOPS.value, "SCOOPS")) return;
+
+                          for (final ruche in c.typesRucheAchatScoopsMulti) {
+                            for (final produit
+                                in c.typesProduitAchatScoopsMulti[ruche] ??
+                                    []) {
+                              final achat =
+                                  c.achatsParRucheProduit[ruche]?[produit];
+                              if (achat == null) continue;
+
+                              if (!validateDouble(
+                                  achat.quantiteAcceptee.value.toString(),
+                                  "Quantité acceptée pour $produit ($ruche)"))
+                                return;
+                              if (!validateDouble(
+                                  achat.quantiteRejetee.value.toString(),
+                                  "Quantité rejetée pour $produit ($ruche)"))
+                                return;
+                              if (!validateDouble(
+                                  achat.prixUnitaire.value.toString(),
+                                  "Prix unitaire pour $produit ($ruche)"))
+                                return;
+                            }
+                          }
+
                           // Vérifier qu'au moins un produit est saisi
                           bool hasProducts = false;
                           for (final ruche in c.typesRucheAchatScoopsMulti) {
@@ -575,6 +772,48 @@ class CollectePage extends StatelessWidget {
                           if (!hasProducts) {
                             Get.snackbar(
                                 "Erreur", "Ajoutez au moins un produit!");
+                            return;
+                          }
+
+                          // Validation de chaque achat produit
+                          for (final ruche in c.typesRucheAchatScoopsMulti) {
+                            for (final produit
+                                in c.typesProduitAchatScoopsMulti[ruche] ??
+                                    []) {
+                              final achat =
+                                  c.achatsParRucheProduit[ruche]?[produit];
+                              if (achat == null) continue;
+
+                              if (achat.quantiteAcceptee.value.isNaN ||
+                                  achat.quantiteAcceptee.value <= 0) {
+                                showFieldError(
+                                  "Erreur quantité",
+                                  "La quantité acceptée doit être > 0 pour '$produit' ($ruche)",
+                                );
+                                return;
+                              }
+                              if (achat.quantiteRejetee.value.isNaN ||
+                                  achat.quantiteRejetee.value < 0) {
+                                showFieldError(
+                                  "Erreur quantité",
+                                  "La quantité rejetée doit être >= 0 pour '$produit' ($ruche)",
+                                );
+                                return;
+                              }
+                              if (achat.prixUnitaire.value.isNaN ||
+                                  achat.prixUnitaire.value <= 0) {
+                                showFieldError(
+                                  "Erreur prix",
+                                  "Le prix unitaire doit être > 0 pour '$produit' ($ruche)",
+                                );
+                                return;
+                              }
+                            }
+                          }
+
+                          if (!hasProducts) {
+                            showFieldError(
+                                "Erreur", "Ajoutez au moins un produit !");
                             return;
                           }
 
@@ -831,303 +1070,317 @@ class CollectePage extends StatelessWidget {
   }
   ///////////////////////////////////////
 
-  Widget _formulaireAchatIndividuel() {
+  Widget _formulaireRecolte(BuildContext context) {
     final c = Get.find<CollecteController>();
-    final _formKey = GlobalKey<FormState>();
+    final formKey = GlobalKey<FormState>();
 
-    return Obx(() => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Recherche Producteur individuel ou Ajouter",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownSearch<String>(
-                    items: c.individuelsConnus,
-                    selectedItem: c.selectedIndividuel.value,
-                    onChanged: (v) {
-                      c.selectedIndividuel.value = v;
-                      c.isAddingIndividuel.value = false;
-                    },
-                    dropdownDecoratorProps: DropDownDecoratorProps(
-                      dropdownSearchDecoration: InputDecoration(
-                        labelText: "Sélectionner un producteur",
-                        prefixIcon: Icon(Icons.person, color: Colors.green),
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: formKey,
+          child: Column(
+            children: [
+              // Technicien
+              DropdownSearch<String>(
+                items: c.techniciens,
+                selectedItem: c.nomRecolteur.value,
+                onChanged: (v) => c.nomRecolteur.value = v,
+                validator: (v) =>
+                    v == null ? "Sélectionner un technicien" : null,
+                dropdownDecoratorProps: DropDownDecoratorProps(
+                  dropdownSearchDecoration:
+                      InputDecoration(labelText: "Technicien"),
+                ),
+                popupProps: PopupProps.menu(
+                  showSearchBox: true,
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(labelText: "Rechercher..."),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16),
+
+              // Région
+              DropdownSearch<String>(
+                items: regionsBurkina,
+                selectedItem: c.region.value,
+                onChanged: (v) {
+                  c.region.value = v;
+                  c.province.value = null;
+                  c.commune.value = null;
+                  c.village.value = null;
+                  c.arrondissement.value = null;
+                  c.secteur.value = null;
+                  c.quartier.value = null;
+                },
+                validator: (v) => v == null ? "Sélectionner une région" : null,
+                dropdownDecoratorProps: DropDownDecoratorProps(
+                  dropdownSearchDecoration:
+                      InputDecoration(labelText: "Région"),
+                ),
+                popupProps: PopupProps.menu(
+                  showSearchBox: true,
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(labelText: "Rechercher..."),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16),
+
+              // Province (filtrée par région)
+              Obx(() {
+                final provinces = c.getProvincesForRegion(c.region.value);
+                return DropdownSearch<String>(
+                  items: provinces,
+                  selectedItem: c.province.value,
+                  onChanged: (v) {
+                    c.province.value = v;
+                    c.commune.value = null;
+                    c.village.value = null;
+                    c.arrondissement.value = null;
+                    c.secteur.value = null;
+                    c.quartier.value = null;
+                  },
+                  validator: (v) =>
+                      v == null ? "Sélectionner une province" : null,
+                  dropdownDecoratorProps: DropDownDecoratorProps(
+                    dropdownSearchDecoration:
+                        InputDecoration(labelText: "Province"),
+                  ),
+                  popupProps: PopupProps.menu(
+                    showSearchBox: true,
+                    searchFieldProps: TextFieldProps(
+                      decoration: InputDecoration(labelText: "Rechercher..."),
+                    ),
+                  ),
+                );
+              }),
+              SizedBox(height: 16),
+
+              // Commune (filtrée par province)
+              Obx(() {
+                final communes = c.getCommunesForProvince(c.province.value);
+                return DropdownSearch<String>(
+                  items: communes,
+                  selectedItem: c.commune.value,
+                  onChanged: (v) {
+                    c.commune.value = v;
+                    c.village.value = null;
+                    c.arrondissement.value = null;
+                    c.secteur.value = null;
+                    c.quartier.value = null;
+                  },
+                  validator: (v) =>
+                      v == null ? "Sélectionner une commune" : null,
+                  dropdownDecoratorProps: DropDownDecoratorProps(
+                    dropdownSearchDecoration:
+                        InputDecoration(labelText: "Commune"),
+                  ),
+                  popupProps: PopupProps.menu(
+                    showSearchBox: true,
+                    searchFieldProps: TextFieldProps(
+                      decoration: InputDecoration(labelText: "Rechercher..."),
+                    ),
+                  ),
+                );
+              }),
+              SizedBox(height: 16),
+
+              // Arrondissement + Secteur + Quartier pour Ouaga/Bobo
+              Obx(() {
+                if (c.commune.value == "Ouagadougou" ||
+                    c.commune.value == "BOBO-DIOULASSO" ||
+                    c.commune.value == "Bobo-Dioulasso") {
+                  // Arrondissement
+                  final arrondissements = ArrondissementsParCommune[
+                          c.commune.value == "BOBO-DIOULASSO"
+                              ? "Bobo-Dioulasso"
+                              : c.commune.value!] ??
+                      [];
+                  return Column(
+                    children: [
+                      DropdownSearch<String>(
+                        items: arrondissements,
+                        selectedItem: c.arrondissement.value,
+                        onChanged: (v) {
+                          c.arrondissement.value = v;
+                          c.secteur.value = null;
+                          c.quartier.value = null;
+                        },
+                        validator: (v) =>
+                            v == null ? "Sélectionner un arrondissement" : null,
+                        dropdownDecoratorProps: DropDownDecoratorProps(
+                          dropdownSearchDecoration:
+                              InputDecoration(labelText: "Arrondissement"),
+                        ),
+                        popupProps: PopupProps.menu(
+                          showSearchBox: true,
+                          searchFieldProps: TextFieldProps(
+                            decoration:
+                                InputDecoration(labelText: "Rechercher..."),
+                          ),
+                        ),
                       ),
+                      SizedBox(height: 16),
+
+                      // Secteur
+                      Obx(() {
+                        if (c.arrondissement.value == null) return Container();
+                        final key =
+                            "${c.commune.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.commune.value}_${c.arrondissement.value}";
+                        final secteurs =
+                            secteursParArrondissement[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: secteurs,
+                          selectedItem: c.secteur.value,
+                          onChanged: (v) {
+                            c.secteur.value = v;
+                            c.quartier.value = null;
+                          },
+                          validator: (v) =>
+                              v == null ? "Sélectionner un secteur" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Secteur"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
+                        );
+                      }),
+                      SizedBox(height: 16),
+
+                      // Quartier (au lieu de village)
+                      Obx(() {
+                        if (c.secteur.value == null) return Container();
+                        final key =
+                            "${c.commune.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.commune.value}_${c.secteur.value}";
+                        final quartiers = QuartierParSecteur[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: quartiers,
+                          selectedItem: c.quartier.value,
+                          onChanged: (v) => c.quartier.value = v,
+                          validator: (v) =>
+                              v == null ? "Sélectionner un quartier" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Quartier"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
+                        );
+                      }),
+                      SizedBox(height: 16),
+                    ],
+                  );
+                } else {
+                  // Village classique
+                  final villages = c.getVillagesForCommune(c.commune.value);
+                  return DropdownSearch<String>(
+                    items: villages,
+                    selectedItem: c.village.value,
+                    onChanged: (v) => c.village.value = v,
+                    dropdownDecoratorProps: DropDownDecoratorProps(
+                      dropdownSearchDecoration:
+                          InputDecoration(labelText: "Village"),
                     ),
                     popupProps: PopupProps.menu(
                       showSearchBox: true,
+                      showSelectedItems: true,
                       searchFieldProps: TextFieldProps(
-                        decoration: InputDecoration(labelText: "Rechercher..."),
+                        decoration: InputDecoration(
+                            labelText: "Rechercher ou saisir..."),
                       ),
-                    ),
-                    validator: (v) =>
-                        v == null ? "Sélectionner un producteur" : null,
-                  ),
-                ),
-                SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.add),
-                  label: Text("Ajouter Individuel"),
-                  onPressed: () => c.isAddingIndividuel.value = true,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700]),
-                ),
-              ],
-            ),
-            if (c.isAddingIndividuel.value) _formulaireAjouterIndividuel(),
-            if (c.selectedIndividuel.value != null &&
-                !c.isAddingIndividuel.value)
-              Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: 22),
-                    Text("Types de ruches",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    // ------ SYSTÈME PERSONNALISÉ POUR LES RUCHES ------
-                    Wrap(
-                      spacing: 8,
-                      children: c.typesRuche.map((ruche) {
-                        final isSelected =
-                            c.typesRucheAchatIndivMulti.contains(ruche);
-                        return CustomMultiSelectCard(
-                          value: ruche,
-                          label: ruche,
-                          selected: isSelected,
+                      emptyBuilder: (context, searchEntry) {
+                        return ListTile(
+                          title: Text('Ajouter "$searchEntry" comme village'),
                           onTap: () {
-                            if (isSelected) {
-                              c.typesRucheAchatIndivMulti.remove(ruche);
-                              c.typesProduitAchatIndivMulti.remove(ruche);
-                              c.achatsIndivParRucheProduit.remove(ruche);
-                            } else {
-                              c.typesRucheAchatIndivMulti.add(ruche);
-                              c.typesProduitAchatIndivMulti
-                                  .putIfAbsent(ruche, () => <String>[].obs);
-                              c.achatsIndivParRucheProduit
-                                  .putIfAbsent(ruche, () => {});
-                            }
+                            c.village.value = searchEntry;
+                            Navigator.of(context).pop();
                           },
                         );
-                      }).toList(),
+                      },
                     ),
-                    SizedBox(height: 16),
-                    // ------ UNE CARTE PAR RUCHE SÉLECTIONNÉE ------
-                    ...c.typesRucheAchatIndivMulti.map((ruche) => Card(
-                          color: Colors.amber[50],
-                          elevation: 1,
-                          margin: EdgeInsets.only(bottom: 12),
-                          child: Padding(
-                            padding: EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.house, color: Colors.amber[800]),
-                                    SizedBox(width: 6),
-                                    Text("Ruche : $ruche",
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                                SizedBox(height: 8),
-                                // ------ SYSTÈME PERSONNALISÉ POUR LES PRODUITS ------
-                                Wrap(
-                                  spacing: 8,
-                                  children: c.typesProduit.map((produit) {
-                                    final isSelected = (c
-                                            .typesProduitAchatIndivMulti[ruche]
-                                            ?.contains(produit)) ??
-                                        false;
-                                    return CustomMultiSelectCard(
-                                      value: produit,
-                                      label: produit,
-                                      selected: isSelected,
-                                      onTap: () {
-                                        if (isSelected) {
-                                          c.typesProduitAchatIndivMulti[ruche]
-                                              ?.remove(produit);
-                                          c.achatsIndivParRucheProduit[ruche]
-                                              ?.remove(produit);
-                                        } else {
-                                          c.typesProduitAchatIndivMulti[
-                                              ruche] ??= <String>[].obs;
-                                          c.typesProduitAchatIndivMulti[ruche]!
-                                              .add(produit);
-                                          c.achatsIndivParRucheProduit[
-                                              ruche] ??= {};
-                                          c.achatsIndivParRucheProduit[ruche]![
-                                                  produit] =
-                                              AchatProduitData(
-                                                  unite: _getUniteForProduct(
-                                                      produit));
-                                        }
-                                      },
-                                    );
-                                  }).toList(),
-                                ),
-                                SizedBox(height: 8),
-                                ...((c.typesProduitAchatIndivMulti[ruche]
-                                            ?.toList() ??
-                                        [])
-                                    .map((produit) {
-                                  final achat =
-                                      c.achatsIndivParRucheProduit[ruche]
-                                          ?[produit];
-                                  if (achat == null) return SizedBox();
-                                  return Card(
-                                    color: Colors.teal[50],
-                                    child: Padding(
-                                      padding: EdgeInsets.all(8),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(Icons.liquor,
-                                                  color: Colors.teal),
-                                              SizedBox(width: 6),
-                                              Text("Produit : $produit",
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold)),
-                                            ],
-                                          ),
-                                          SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: TextFormField(
-                                                  decoration: InputDecoration(
-                                                    labelText:
-                                                        "Quantité acceptée",
-                                                    prefixIcon: Icon(
-                                                        Icons.check,
-                                                        color: Colors.green),
-                                                    suffixText: achat.unite,
-                                                  ),
-                                                  keyboardType:
-                                                      TextInputType.number,
-                                                  onChanged: (v) => achat
-                                                          .quantiteAcceptee
-                                                          .value =
-                                                      double.tryParse(v) ?? 0,
-                                                ),
-                                              ),
-                                              SizedBox(width: 10),
-                                              Expanded(
-                                                child: TextFormField(
-                                                  decoration: InputDecoration(
-                                                    labelText:
-                                                        "Quantité rejetée",
-                                                    prefixIcon: Icon(
-                                                        Icons.close,
-                                                        color: Colors.red),
-                                                    suffixText: achat.unite,
-                                                  ),
-                                                  keyboardType:
-                                                      TextInputType.number,
-                                                  onChanged: (v) => achat
-                                                          .quantiteRejetee
-                                                          .value =
-                                                      double.tryParse(v) ?? 0,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: TextFormField(
-                                                  decoration: InputDecoration(
-                                                    labelText: "Prix unitaire",
-                                                    prefixIcon: Icon(Icons.euro,
-                                                        color: Colors.blue),
-                                                  ),
-                                                  keyboardType:
-                                                      TextInputType.number,
-                                                  onChanged: (v) => achat
-                                                          .prixUnitaire.value =
-                                                      double.tryParse(v) ?? 0,
-                                                ),
-                                              ),
-                                              SizedBox(width: 10),
-                                              Expanded(
-                                                child: Obx(() => Text(
-                                                      "Prix total : ${achat.prixTotal.value.toStringAsFixed(2)} ${achat.unite}",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Colors
-                                                              .green[700]),
-                                                    )),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList()),
-                              ],
-                            ),
-                          ),
-                        )),
-                    SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: ElevatedButton.icon(
-                        icon: Icon(Icons.save),
-                        label: Text("Enregistrer la collecte"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber[700],
-                        ),
-                        onPressed: () async {
-                          if (_formKey.currentState?.validate() ?? false) {
-                            final snapshot = await FirebaseFirestore.instance
-                                .collection('Individuels')
-                                .where('nomPrenom',
-                                    isEqualTo: c.selectedIndividuel.value)
-                                .limit(1)
-                                .get();
+                    validator: (v) => v == null || v.isEmpty
+                        ? "Sélectionner ou saisir un village"
+                        : null,
+                  );
+                }
+              }),
+              SizedBox(height: 16),
 
-                            if (snapshot.docs.isEmpty) {
-                              Get.snackbar("Erreur", "Individuel non trouvé !");
-                              return;
-                            }
-                            final individuelInfo = snapshot.docs.first.data();
+              // Quantité récoltée
+              TextFormField(
+                decoration: InputDecoration(
+                    labelText: "Quantité (kg)",
+                    suffixText: "kg",
+                    prefixIcon: Icon(Icons.balance, color: Colors.brown[400])),
+                keyboardType: TextInputType.number,
+                onChanged: (v) => c.quantiteRecolte.value = double.tryParse(v),
+                validator: (v) =>
+                    v == null || v.isEmpty || double.tryParse(v) == null
+                        ? "Obligatoire"
+                        : null,
+              ),
+              SizedBox(height: 16),
 
-                            final achatDetails = c.generateAchatIndivData();
-
-                            await c.enregistrerCollecteAchat(
-                              isScoops: false,
-                              achatDetails: achatDetails,
-                              fournisseurDetails: individuelInfo,
-                            );
-                            Get.snackbar("Succès", "Collecte enregistrée !");
-                            c.selectedIndividuel.value = null;
-                          } else {
-                            Get.snackbar(
-                                "Erreur", "Veuillez remplir tous les champs !");
-                          }
-                        },
-                      ),
-                    ),
-                  ],
+              // Nombre de ruches récoltées
+              TextFormField(
+                decoration: InputDecoration(
+                    labelText: "Nombre de ruches récoltées",
+                    prefixIcon: Icon(Icons.hive_rounded, color: Colors.amber)),
+                keyboardType: TextInputType.number,
+                onChanged: (v) =>
+                    c.nbRuchesRecoltees.value = int.tryParse(v ?? ""),
+                validator: (v) =>
+                    v == null || v.isEmpty || int.tryParse(v) == null
+                        ? "Obligatoire"
+                        : null,
+              ),
+              MultiSelectFlorale(c),
+              SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton.icon(
+                  icon: Icon(Icons.save),
+                  label: Text("Enregistrer la collecte"),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber[700]),
+                  onPressed: () async {
+                    if (formKey.currentState?.validate() ?? false) {
+                      await c.enregistrerCollecteRecolte();
+                      formKey.currentState?.reset();
+                    } else {
+                      Get.snackbar(
+                          "Erreur", "Veuillez remplir tous les champs !");
+                    }
+                  },
                 ),
               ),
-          ],
-        ));
+              boutonRetour(context),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _formulaireAjouterScoops() {
     final c = Get.find<CollecteController>();
     final _formKey = GlobalKey<FormState>();
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -1138,7 +1391,6 @@ class CollectePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ... (nom, président, etc.)
               Row(
                 children: [
                   Icon(Icons.add_business, color: Colors.blue[800], size: 26),
@@ -1174,6 +1426,9 @@ class CollectePage extends StatelessWidget {
                   c.regionScoopsAjout.value = v;
                   c.provinceScoopsAjout.value = null;
                   c.communeScoopsAjout.value = null;
+                  c.arrondissementScoopsAjout.value = null;
+                  c.secteurScoopsAjout.value = null;
+                  c.quartierScoopsAjout.value = null;
                   c.villageScoopsAjout.value = null;
                 },
                 dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1198,6 +1453,9 @@ class CollectePage extends StatelessWidget {
                   onChanged: (v) {
                     c.provinceScoopsAjout.value = v;
                     c.communeScoopsAjout.value = null;
+                    c.arrondissementScoopsAjout.value = null;
+                    c.secteurScoopsAjout.value = null;
+                    c.quartierScoopsAjout.value = null;
                     c.villageScoopsAjout.value = null;
                   },
                   dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1223,6 +1481,9 @@ class CollectePage extends StatelessWidget {
                   selectedItem: c.communeScoopsAjout.value,
                   onChanged: (v) {
                     c.communeScoopsAjout.value = v;
+                    c.arrondissementScoopsAjout.value = null;
+                    c.secteurScoopsAjout.value = null;
+                    c.quartierScoopsAjout.value = null;
                     c.villageScoopsAjout.value = null;
                   },
                   dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1240,45 +1501,143 @@ class CollectePage extends StatelessWidget {
                 );
               }),
               SizedBox(height: 12),
+
+              // Arrondissement, Secteur, Quartier dynamique pour Ouaga/Bobo
               Obx(() {
-                final villages =
-                    c.getVillagesForCommune(c.communeScoopsAjout.value);
-                return DropdownSearch<String>(
-                  items: villages,
-                  selectedItem: c.villageScoopsAjout.value,
-                  onChanged: (v) => c.villageScoopsAjout.value = v,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration:
-                        InputDecoration(labelText: "Village"),
-                  ),
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration:
-                          InputDecoration(labelText: "Rechercher ou saisir..."),
-                    ),
-                    emptyBuilder: (context, searchEntry) {
-                      // Propose d’ajouter le texte tapé
-                      if (searchEntry.isNotEmpty) {
-                        return ListTile(
-                          leading: Icon(Icons.add_location_alt,
-                              color: Colors.amber[700]),
-                          title: Text('Ajouter "$searchEntry" comme village'),
-                          onTap: () {
-                            c.villageScoopsAjout.value = searchEntry;
-                            Navigator.of(context).pop();
+                if (c.communeScoopsAjout.value == "Ouagadougou" ||
+                    c.communeScoopsAjout.value == "BOBO-DIOULASSO" ||
+                    c.communeScoopsAjout.value == "Bobo-Dioulasso") {
+                  final arrondissements = ArrondissementsParCommune[
+                          c.communeScoopsAjout.value == "BOBO-DIOULASSO"
+                              ? "Bobo-Dioulasso"
+                              : c.communeScoopsAjout.value!] ??
+                      [];
+                  return Column(
+                    children: [
+                      DropdownSearch<String>(
+                        items: arrondissements,
+                        selectedItem: c.arrondissementScoopsAjout.value,
+                        onChanged: (v) {
+                          c.arrondissementScoopsAjout.value = v;
+                          c.secteurScoopsAjout.value = null;
+                          c.quartierScoopsAjout.value = null;
+                        },
+                        validator: (v) =>
+                            v == null ? "Sélectionner un arrondissement" : null,
+                        dropdownDecoratorProps: DropDownDecoratorProps(
+                          dropdownSearchDecoration:
+                              InputDecoration(labelText: "Arrondissement"),
+                        ),
+                        popupProps: PopupProps.menu(
+                          showSearchBox: true,
+                          searchFieldProps: TextFieldProps(
+                            decoration:
+                                InputDecoration(labelText: "Rechercher..."),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      // Secteur
+                      Obx(() {
+                        if (c.arrondissementScoopsAjout.value == null)
+                          return Container();
+                        final key =
+                            "${c.communeScoopsAjout.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.communeScoopsAjout.value}_${c.arrondissementScoopsAjout.value}";
+                        final secteurs =
+                            secteursParArrondissement[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: secteurs,
+                          selectedItem: c.secteurScoopsAjout.value,
+                          onChanged: (v) {
+                            c.secteurScoopsAjout.value = v;
+                            c.quartierScoopsAjout.value = null;
                           },
+                          validator: (v) =>
+                              v == null ? "Sélectionner un secteur" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Secteur"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
                         );
-                      }
-                      return const Center(child: Text('Aucun village trouvé'));
-                    },
-                  ),
-                  validator: (v) => v == null || v.isEmpty
-                      ? "Sélectionner ou saisir un village"
-                      : null,
-                );
+                      }),
+                      SizedBox(height: 12),
+                      // Quartier (au lieu de village)
+                      Obx(() {
+                        if (c.secteurScoopsAjout.value == null)
+                          return Container();
+                        final key =
+                            "${c.communeScoopsAjout.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.communeScoopsAjout.value}_${c.secteurScoopsAjout.value}";
+                        final quartiers = QuartierParSecteur[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: quartiers,
+                          selectedItem: c.quartierScoopsAjout.value,
+                          onChanged: (v) => c.quartierScoopsAjout.value = v,
+                          validator: (v) =>
+                              v == null ? "Sélectionner un quartier" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Quartier"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  );
+                } else {
+                  // Village classique si autre commune
+                  final villages =
+                      c.getVillagesForCommune(c.communeScoopsAjout.value);
+                  return DropdownSearch<String>(
+                    items: villages,
+                    selectedItem: c.villageScoopsAjout.value,
+                    onChanged: (v) => c.villageScoopsAjout.value = v,
+                    dropdownDecoratorProps: DropDownDecoratorProps(
+                      dropdownSearchDecoration:
+                          InputDecoration(labelText: "Village"),
+                    ),
+                    popupProps: PopupProps.menu(
+                      showSearchBox: true,
+                      searchFieldProps: TextFieldProps(
+                        decoration: InputDecoration(
+                            labelText: "Rechercher ou saisir..."),
+                      ),
+                      emptyBuilder: (context, searchEntry) {
+                        if (searchEntry.isNotEmpty) {
+                          return ListTile(
+                            leading: Icon(Icons.add_location_alt,
+                                color: Colors.amber[700]),
+                            title: Text('Ajouter "$searchEntry" comme village'),
+                            onTap: () {
+                              c.villageScoopsAjout.value = searchEntry;
+                              Navigator.of(context).pop();
+                            },
+                          );
+                        }
+                        return const Center(
+                            child: Text('Aucun village trouvé'));
+                      },
+                    ),
+                    validator: (v) => v == null || v.isEmpty
+                        ? "Sélectionner ou saisir un village"
+                        : null,
+                  );
+                }
               }),
               // ... (reste du formulaire inchangé)
+              SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
@@ -1309,7 +1668,6 @@ class CollectePage extends StatelessWidget {
                 ],
               ),
               SizedBox(height: 12),
-              // === Nouveau champ pour Nb jeunes (à saisir) ===
               _numberFieldCtrlWithIcon(
                 "Inférieur à 35 ans",
                 c.nbJeuneScoopsAjout,
@@ -1317,7 +1675,6 @@ class CollectePage extends StatelessWidget {
                 "Obligatoire",
               ),
               SizedBox(height: 12),
-              // === Nb femmes et Nb vieux affichés en lecture seule ===
               Row(
                 children: [
                   Expanded(
@@ -1352,9 +1709,6 @@ class CollectePage extends StatelessWidget {
                   Expanded(
                       child: Text("Récipisé (PDF à importer)",
                           style: TextStyle(color: Colors.grey))),
-                  //IconButton(
-                  //    onPressed: () {},
-                  //    icon: Icon(Icons.upload_file, color: Colors.amber)),
                 ],
               ),
               SizedBox(height: 16),
@@ -1431,6 +1785,9 @@ class CollectePage extends StatelessWidget {
                   c.regionIndivAjout.value = v;
                   c.provinceIndivAjout.value = null;
                   c.communeIndivAjout.value = null;
+                  c.arrondissementIndivAjout.value = null;
+                  c.secteurIndivAjout.value = null;
+                  c.quartierIndivAjout.value = null;
                   c.villageIndivAjout.value = null;
                 },
                 dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1455,6 +1812,9 @@ class CollectePage extends StatelessWidget {
                   onChanged: (v) {
                     c.provinceIndivAjout.value = v;
                     c.communeIndivAjout.value = null;
+                    c.arrondissementIndivAjout.value = null;
+                    c.secteurIndivAjout.value = null;
+                    c.quartierIndivAjout.value = null;
                     c.villageIndivAjout.value = null;
                   },
                   dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1480,6 +1840,9 @@ class CollectePage extends StatelessWidget {
                   selectedItem: c.communeIndivAjout.value,
                   onChanged: (v) {
                     c.communeIndivAjout.value = v;
+                    c.arrondissementIndivAjout.value = null;
+                    c.secteurIndivAjout.value = null;
+                    c.quartierIndivAjout.value = null;
                     c.villageIndivAjout.value = null;
                   },
                   dropdownDecoratorProps: DropDownDecoratorProps(
@@ -1497,42 +1860,140 @@ class CollectePage extends StatelessWidget {
                 );
               }),
               SizedBox(height: 12),
+
+              // Arrondissement, Secteur, Quartier dynamique pour Ouaga/Bobo
               Obx(() {
-                final villages =
-                    c.getVillagesForCommune(c.communeIndivAjout.value);
-                return DropdownSearch<String>(
-                  items: villages,
-                  selectedItem: c.villageIndivAjout.value,
-                  onChanged: (v) => c.villageIndivAjout.value = v,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration:
-                        InputDecoration(labelText: "Village"),
-                  ),
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration:
-                          InputDecoration(labelText: "Rechercher ou saisir..."),
-                    ),
-                    emptyBuilder: (context, searchEntry) {
-                      if (searchEntry.isNotEmpty) {
-                        return ListTile(
-                          leading: Icon(Icons.add_location_alt,
-                              color: Colors.amber[700]),
-                          title: Text('Ajouter "$searchEntry" comme village'),
-                          onTap: () {
-                            c.villageIndivAjout.value = searchEntry;
-                            Navigator.of(context).pop();
+                if (c.communeIndivAjout.value == "Ouagadougou" ||
+                    c.communeIndivAjout.value == "BOBO-DIOULASSO" ||
+                    c.communeIndivAjout.value == "Bobo-Dioulasso") {
+                  final arrondissements = ArrondissementsParCommune[
+                          c.communeIndivAjout.value == "BOBO-DIOULASSO"
+                              ? "Bobo-Dioulasso"
+                              : c.communeIndivAjout.value!] ??
+                      [];
+                  return Column(
+                    children: [
+                      DropdownSearch<String>(
+                        items: arrondissements,
+                        selectedItem: c.arrondissementIndivAjout.value,
+                        onChanged: (v) {
+                          c.arrondissementIndivAjout.value = v;
+                          c.secteurIndivAjout.value = null;
+                          c.quartierIndivAjout.value = null;
+                        },
+                        validator: (v) =>
+                            v == null ? "Sélectionner un arrondissement" : null,
+                        dropdownDecoratorProps: DropDownDecoratorProps(
+                          dropdownSearchDecoration:
+                              InputDecoration(labelText: "Arrondissement"),
+                        ),
+                        popupProps: PopupProps.menu(
+                          showSearchBox: true,
+                          searchFieldProps: TextFieldProps(
+                            decoration:
+                                InputDecoration(labelText: "Rechercher..."),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      // Secteur
+                      Obx(() {
+                        if (c.arrondissementIndivAjout.value == null)
+                          return Container();
+                        final key =
+                            "${c.communeIndivAjout.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.communeIndivAjout.value}_${c.arrondissementIndivAjout.value}";
+                        final secteurs =
+                            secteursParArrondissement[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: secteurs,
+                          selectedItem: c.secteurIndivAjout.value,
+                          onChanged: (v) {
+                            c.secteurIndivAjout.value = v;
+                            c.quartierIndivAjout.value = null;
                           },
+                          validator: (v) =>
+                              v == null ? "Sélectionner un secteur" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Secteur"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
                         );
-                      }
-                      return const Center(child: Text('Aucun village trouvé'));
-                    },
-                  ),
-                  validator: (v) => v == null || v.isEmpty
-                      ? "Sélectionner ou saisir un village"
-                      : null,
-                );
+                      }),
+                      SizedBox(height: 12),
+                      // Quartier (au lieu de village)
+                      Obx(() {
+                        if (c.secteurIndivAjout.value == null)
+                          return Container();
+                        final key =
+                            "${c.communeIndivAjout.value == "BOBO-DIOULASSO" ? "Bobo-Dioulasso" : c.communeIndivAjout.value}_${c.secteurIndivAjout.value}";
+                        final quartiers = QuartierParSecteur[key] ?? <String>[];
+                        return DropdownSearch<String>(
+                          items: quartiers,
+                          selectedItem: c.quartierIndivAjout.value,
+                          onChanged: (v) => c.quartierIndivAjout.value = v,
+                          validator: (v) =>
+                              v == null ? "Sélectionner un quartier" : null,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: "Quartier"),
+                          ),
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration:
+                                  InputDecoration(labelText: "Rechercher..."),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  );
+                } else {
+                  // Village classique si autre commune
+                  final villages =
+                      c.getVillagesForCommune(c.communeIndivAjout.value);
+                  return DropdownSearch<String>(
+                    items: villages,
+                    selectedItem: c.villageIndivAjout.value,
+                    onChanged: (v) => c.villageIndivAjout.value = v,
+                    dropdownDecoratorProps: DropDownDecoratorProps(
+                      dropdownSearchDecoration:
+                          InputDecoration(labelText: "Village"),
+                    ),
+                    popupProps: PopupProps.menu(
+                      showSearchBox: true,
+                      searchFieldProps: TextFieldProps(
+                        decoration: InputDecoration(
+                            labelText: "Rechercher ou saisir..."),
+                      ),
+                      emptyBuilder: (context, searchEntry) {
+                        if (searchEntry.isNotEmpty) {
+                          return ListTile(
+                            leading: Icon(Icons.add_location_alt,
+                                color: Colors.amber[700]),
+                            title: Text('Ajouter "$searchEntry" comme village'),
+                            onTap: () {
+                              c.villageIndivAjout.value = searchEntry;
+                              Navigator.of(context).pop();
+                            },
+                          );
+                        }
+                        return const Center(
+                            child: Text('Aucun village trouvé'));
+                      },
+                    ),
+                    validator: (v) => v == null || v.isEmpty
+                        ? "Sélectionner ou saisir un village"
+                        : null,
+                  );
+                }
               }),
               SizedBox(height: 12),
               TextFormField(
@@ -1616,7 +2077,6 @@ class CollectePage extends StatelessWidget {
                 }
                 return SizedBox.shrink();
               }),
-              // ... (reste du formulaire inchangé)
               MultiSelectFlorale(c),
               SizedBox(height: 12),
               Row(
@@ -1644,7 +2104,6 @@ class CollectePage extends StatelessWidget {
                     if (appartenance.value == "Propre") {
                       c.cooperativeIndivAjout.value = "Propre";
                     }
-                    // Validation native
                     if (_formKey.currentState?.validate() ?? false) {
                       await c.enregistrerNouvelIndividuel();
                     } else {

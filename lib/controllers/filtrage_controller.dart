@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:collection/collection.dart';
 import 'package:get/get.dart';
 
 class FiltrageController extends GetxController {
@@ -20,12 +19,7 @@ class FiltrageController extends GetxController {
     achatsScoops.clear();
     achatsIndividuels.clear();
 
-    // 1. Récupère toutes les extractions
-    final extractionsSnap =
-        await FirebaseFirestore.instance.collection('extraction').get();
-    final extractions = extractionsSnap.docs.map((doc) => doc.data()).toList();
-
-    // 2. Récupère tous les filtrages déjà faits
+    // 1. Tous les filtrages déjà faits
     final filtragesSnap =
         await FirebaseFirestore.instance.collection('filtrage').get();
     final filtrages = filtragesSnap.docs.map((doc) {
@@ -34,356 +28,313 @@ class FiltrageController extends GetxController {
       return data;
     }).toList();
 
-    // 3. Récupère tous les contrôles validés
+    // 2. Toutes les extractions
+    final extractionsSnap =
+        await FirebaseFirestore.instance.collection('extraction').get();
+    final extractions = extractionsSnap.docs.map((doc) => doc.data()).toList();
+
+    // 3. Tous les contrôles validés (par produit)
     final controleSnap =
         await FirebaseFirestore.instance.collection('Controle').get();
+    final controles = controleSnap.docs.map((doc) => doc.data()).toList();
 
-    // ========= Ajout des collectes issues d'une extraction totale =========
-    for (final controleDoc in controleSnap.docs) {
-      final controle = controleDoc.data();
+    // Index les extractions pour accès rapide
+    Map<String, Map> extractionByKey = {};
+    for (final ext in extractions) {
+      final key = [
+        ext['collecteId'],
+        ext['achatId'] ?? '',
+        ext['detailIndex']?.toString() ?? ''
+      ].join('|');
+      extractionByKey[key] = ext;
+    }
+
+    // Index les filtrages pour accès rapide
+    Map<String, Map> filtrageByKey = {};
+    for (final f in filtrages) {
+      final key = [
+        f['collecteId'],
+        f['achatId'] ?? '',
+        f['detailIndex']?.toString() ?? ''
+      ].join('|');
+      filtrageByKey[key] = f;
+    }
+
+    for (final controle in controles) {
       final collecteId = controle['collecteId'];
+      final recId = controle['recId'];
+      final achatId = controle['achatId'];
+      final detailIndex = controle['detailIndex'];
       final numeroLot = controle['numeroLot'];
+      final typeCollecte = controle['typeCollecte'];
+      final typeProduit =
+          (controle['typeProduit'] ?? '').toString().toLowerCase();
+      final poidsMiel =
+          double.tryParse(controle['poidsMiel']?.toString() ?? "0") ?? 0;
 
+      // Récupérer la collecte associée (infos affichage)
       final collecteSnap = await FirebaseFirestore.instance
           .collection('collectes')
           .doc(collecteId)
           .get();
       if (!collecteSnap.exists) continue;
       final collecte = collecteSnap.data()!;
-      final type = collecte['type']?.toString()?.toLowerCase();
       final dateCollecte = (collecte['dateCollecte'] as Timestamp?)?.toDate();
       final utilisateur = collecte['utilisateurNom'] ?? "";
 
-      final extraction = extractions.firstWhereOrNull(
-        (e) =>
-            e['collecteId'] == collecteId &&
-            e['statutExtraction'] == "Entièrement Extraite",
-      );
-      final filtrage = filtrages.firstWhereOrNull(
-        (f) => f['collecteId'] == collecteId,
-      );
+      final key =
+          [collecteId, achatId ?? '', detailIndex?.toString() ?? ''].join('|');
+      final extraction = extractionByKey[key] ?? {};
+      final filtrage = filtrageByKey[key];
 
-      // ===== RECOLTE =====
-      if (type == "récolte") {
+      // 1. Statut et timer filtrage
+      final statutFiltrage = filtrage?['statutFiltrage'] ?? "Non filtré";
+      DateTime? expirationFiltrage;
+      if (filtrage?['expirationFiltrage'] is Timestamp) {
+        expirationFiltrage =
+            (filtrage?['expirationFiltrage'] as Timestamp).toDate();
+      } else if (statutFiltrage == "Filtrage total" &&
+          filtrage?['dateFiltrage'] is Timestamp) {
+        expirationFiltrage = (filtrage?['dateFiltrage'] as Timestamp)
+            .toDate()
+            .add(const Duration(minutes: 30));
+      }
+      bool isFiltrageTotal = statutFiltrage == "Filtrage total";
+      bool isFiltrageEncoreValide = true;
+      if (isFiltrageTotal && expirationFiltrage != null) {
+        isFiltrageEncoreValide = DateTime.now().isBefore(expirationFiltrage);
+      }
+      if (isFiltrageTotal && !isFiltrageEncoreValide) continue;
+
+      // 2. Calcul cumuls filtrage
+      double quantiteEntree = filtrage?['quantiteEntree'] != null
+          ? (filtrage?['quantiteEntree'] as num).toDouble()
+          : 0.0;
+      double quantiteFiltree = filtrage?['quantiteFiltree'] != null
+          ? (filtrage?['quantiteFiltree'] as num).toDouble()
+          : 0.0;
+      double quantiteRestante = filtrage?['quantiteRestante'] != null
+          ? (filtrage?['quantiteRestante'] as num).toDouble()
+          : 0.0;
+
+      double quantiteDepart = poidsMiel;
+      if (extraction.isNotEmpty && extraction['quantiteFiltree'] != null) {
+        final qF = double.tryParse(extraction['quantiteFiltree'].toString());
+        if (qF != null && qF > 0) quantiteDepart = qF;
+      }
+
+      // Si pas de filtrage, fallback sur extraction/controle pour la carte (valeurs "brutes")
+      if (statutFiltrage == "Non filtré") {
+        quantiteEntree = 0.0;
+        quantiteFiltree = 0.0;
+        quantiteRestante = quantiteDepart;
+      } else {
+        // Pour garder une cohérence si la BDD a des anciens enregistrements sans quantiteRestante
+        if (quantiteRestante == 0 && quantiteEntree > 0) {
+          quantiteRestante = (quantiteDepart - quantiteEntree);
+          if (quantiteRestante < 0) quantiteRestante = 0;
+        }
+      }
+
+      // --- Récolte ---
+      if (typeCollecte == "Récolte") {
+        final extractionOk =
+            extraction['statutExtraction'] == "Entièrement Extraite";
+        final isMielFiltre =
+            typeProduit.contains("filtré") || typeProduit.contains("filtre");
+        if (!extractionOk && !isMielFiltre && !isFiltrageTotal) continue;
+
         final sousColl =
             await collecteSnap.reference.collection('Récolte').get();
-        for (final sousDoc in sousColl.docs) {
-          if (extraction != null) {
-            final r = sousDoc.data();
-            final extractionExpiration =
-                extraction['expirationExtraction'] is Timestamp
-                    ? (extraction['expirationExtraction'] as Timestamp).toDate()
-                    : null;
-            final extractionExpiree = extractionExpiration != null &&
-                extractionExpiration.isBefore(DateTime.now());
-
-            recoltes.add({
-              'id': collecteId,
-              'numeroLot': numeroLot,
-              'producteurNom': r['nomRecolteur'] ?? "",
-              'village': r['village'] ?? "",
-              'dateCollecte': dateCollecte,
-              'typeProduit': "Miel Filtré",
-              'quantite': extraction['quantiteFiltree'] ?? 0,
-              'unite': 'kg',
-              'predominanceFlorale': r['predominanceFlorale'] ?? "",
-              'dateControle':
-                  (controle['dateControle'] as Timestamp?)?.toDate(),
-              'utilisateur': utilisateur,
-              'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-              'quantiteEntree': filtrage?['quantiteEntree'],
-              'quantiteFiltree': filtrage?['quantiteFiltree'],
-              'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                  ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                  : null,
-              'expirationExtraction': extractionExpiration,
-              'extractionExpiree': extractionExpiree,
-              'filtrageId': filtrage?['id'],
-            });
-          }
+        Map? r;
+        if (recId != null) {
+          r = sousColl.docs.firstWhereOrNull((doc) => doc.id == recId)?.data();
+        } else if (sousColl.docs.isNotEmpty) {
+          r = sousColl.docs.first.data();
         }
+        if (r == null) continue;
+
+        recoltes.add({
+          'id': collecteId,
+          'recId': recId,
+          'detailIndex': detailIndex,
+          'numeroLot': numeroLot,
+          'producteurNom': r['nomRecolteur'] ?? "",
+          'village': r['village'] ?? "",
+          'commune': r['commune'] ?? "",
+          'quartier': r['quartier'] ?? "",
+          'dateCollecte': dateCollecte,
+          'dateExtraction': extraction['dateExtraction'] is Timestamp
+              ? (extraction['dateExtraction'] as Timestamp).toDate()
+              : null,
+          'typeProduit': controle['typeProduit'] ?? "",
+          'typeRuche': controle['typeRuche'] ?? "",
+          'quantite': quantiteDepart,
+          'quantiteDepart': quantiteDepart,
+          'unite': r['unite'] ?? '',
+          'predominanceFlorale':
+              controle['predominanceFlorale'] ?? r['predominanceFlorale'] ?? "",
+          'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
+          'utilisateur': utilisateur,
+          'statutFiltrage': statutFiltrage,
+          'expirationFiltrage': expirationFiltrage,
+          'quantiteEntree': quantiteEntree,
+          'quantiteFiltree': quantiteFiltree,
+          'quantiteRestante': quantiteRestante,
+          'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
+              ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
+              : null,
+          'filtrageId': filtrage?['id'],
+        });
       }
 
-      // ===== ACHAT - SCOOPS =====
-      if (type == "achat") {
-        // SCOOPS
+      // --- Achat SCOOPS ---
+      else if (typeCollecte == "Achat - SCOOPS" ||
+          typeCollecte == "Achat SCOOPS") {
+        final isMielFiltre =
+            typeProduit.contains("filtré") || typeProduit.contains("filtre");
+        final extractionOk =
+            extraction['statutExtraction'] == "Entièrement Extraite";
+        if (!extractionOk && !isMielFiltre && !isFiltrageTotal) continue;
+
         final scoopsColl =
             await collecteSnap.reference.collection('SCOOP').get();
-        for (final achat in scoopsColl.docs) {
-          if (extraction != null) {
-            final a = achat.data();
-            final fournisseurColl =
-                await achat.reference.collection('SCOOP_info').get();
-            final fournisseur = fournisseurColl.docs.isNotEmpty
-                ? fournisseurColl.docs.first.data()
-                : {};
-            final extractionExpiration =
-                extraction['expirationExtraction'] is Timestamp
-                    ? (extraction['expirationExtraction'] as Timestamp).toDate()
-                    : null;
-            final extractionExpiree = extractionExpiration != null &&
-                extractionExpiration.isBefore(DateTime.now());
+        Map? achat = scoopsColl.docs
+            .firstWhereOrNull((doc) => doc.id == achatId)
+            ?.data();
+        if (achat == null) continue;
+        final fournisseurColl = await FirebaseFirestore.instance
+            .collection('collectes')
+            .doc(collecteId)
+            .collection('SCOOP')
+            .doc(achatId)
+            .collection('SCOOP_info')
+            .get();
+        final fournisseur = fournisseurColl.docs.isNotEmpty
+            ? fournisseurColl.docs.first.data()
+            : {};
 
-            achatsScoops.add({
-              'id': collecteId,
-              'numeroLot': numeroLot,
-              'producteurNom': fournisseur['nom'] ?? "",
-              'village': fournisseur['localite'] ?? "",
-              'dateCollecte': dateCollecte,
-              'typeProduit': a['typeProduit'] ?? "Miel Filtré",
-              'quantite': extraction['quantiteFiltree'] ?? 0,
-              'unite': a['unite'] ?? '',
-              'predominanceFlorale': fournisseur['predominanceFlorale'] ?? "",
-              'dateControle':
-                  (controle['dateControle'] as Timestamp?)?.toDate(),
-              'utilisateur': utilisateur,
-              'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-              'quantiteEntree': filtrage?['quantiteEntree'],
-              'quantiteFiltree': filtrage?['quantiteFiltree'],
-              'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                  ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                  : null,
-              'expirationExtraction': extractionExpiration,
-              'extractionExpiree': extractionExpiree,
-              'filtrageId': filtrage?['id'],
-            });
-          }
+        final details =
+            achat['details'] is List ? achat['details'] as List : [];
+        Map? detail;
+        if (details.isNotEmpty && detailIndex != null) {
+          detail = details.length > detailIndex ? details[detailIndex] : null;
         }
-        // ===== ACHAT - INDIVIDUEL =====
+
+        achatsScoops.add({
+          'id': collecteId,
+          'achatId': achatId,
+          'detailIndex': detailIndex,
+          'numeroLot': numeroLot,
+          'producteurNom': fournisseur['nom'] ?? "",
+          'producteurType': 'SCOOPS',
+          'nomPresident': fournisseur['nomPresident'] ?? "",
+          'commune': fournisseur['commune'] ?? "",
+          'quartier': fournisseur['quartier'] ?? "",
+          'village': fournisseur['village'] ?? fournisseur['localite'] ?? "",
+          'dateCollecte': dateCollecte,
+          'dateExtraction': extraction['dateExtraction'] is Timestamp
+              ? (extraction['dateExtraction'] as Timestamp).toDate()
+              : null,
+          'typeProduit': detail?['typeProduit'] ?? "",
+          'typeRuche': detail?['typeRuche'] ?? "",
+          'quantite': quantiteDepart,
+          'quantiteDepart': quantiteDepart,
+          'unite': detail?['unite'] ?? '',
+          'predominanceFlorale': controle['predominanceFlorale'] ??
+              fournisseur['predominanceFlorale'] ??
+              "",
+          'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
+          'utilisateur': utilisateur,
+          'statutFiltrage': statutFiltrage,
+          'expirationFiltrage': expirationFiltrage,
+          'quantiteEntree': quantiteEntree,
+          'quantiteFiltree': quantiteFiltree,
+          'quantiteRestante': quantiteRestante,
+          'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
+              ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
+              : null,
+          'filtrageId': filtrage?['id'],
+        });
+      }
+
+      // --- Achat Individuel ---
+      else if (typeCollecte == "Achat - Individuel" ||
+          typeCollecte == "Achat Individuel") {
+        final isMielFiltre =
+            typeProduit.contains("filtré") || typeProduit.contains("filtre");
+        final extractionOk =
+            extraction['statutExtraction'] == "Entièrement Extraite";
+        if (!extractionOk && !isMielFiltre && !isFiltrageTotal) continue;
+
         final indColl =
             await collecteSnap.reference.collection('Individuel').get();
-        for (final achat in indColl.docs) {
-          if (extraction != null) {
-            final a = achat.data();
-            final fournisseurColl =
-                await achat.reference.collection('Individuel_info').get();
-            final fournisseur = fournisseurColl.docs.isNotEmpty
-                ? fournisseurColl.docs.first.data()
-                : {};
-            final extractionExpiration =
-                extraction['expirationExtraction'] is Timestamp
-                    ? (extraction['expirationExtraction'] as Timestamp).toDate()
-                    : null;
-            final extractionExpiree = extractionExpiration != null &&
-                extractionExpiration.isBefore(DateTime.now());
+        Map? achat =
+            indColl.docs.firstWhereOrNull((doc) => doc.id == achatId)?.data();
+        if (achat == null) continue;
+        final fournisseurColl = await FirebaseFirestore.instance
+            .collection('collectes')
+            .doc(collecteId)
+            .collection('Individuel')
+            .doc(achatId)
+            .collection('Individuel_info')
+            .get();
+        final fournisseur = fournisseurColl.docs.isNotEmpty
+            ? fournisseurColl.docs.first.data()
+            : {};
 
-            achatsIndividuels.add({
-              'id': collecteId,
-              'numeroLot': numeroLot,
-              'producteurNom': fournisseur['nomPrenom'] ?? "",
-              'village': fournisseur['localite'] ?? "",
-              'dateCollecte': dateCollecte,
-              'typeProduit': a['typeProduit'] ?? "Miel Filtré",
-              'quantite': extraction['quantiteFiltree'] ?? 0,
-              'unite': a['unite'] ?? '',
-              'predominanceFlorale': fournisseur['predominanceFlorale'] ?? "",
-              'dateControle':
-                  (controle['dateControle'] as Timestamp?)?.toDate(),
-              'utilisateur': utilisateur,
-              'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-              'quantiteEntree': filtrage?['quantiteEntree'],
-              'quantiteFiltree': filtrage?['quantiteFiltree'],
-              'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                  ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                  : null,
-              'expirationExtraction': extractionExpiration,
-              'extractionExpiree': extractionExpiree,
-              'filtrageId': filtrage?['id'],
-            });
-          }
+        final details =
+            achat['details'] is List ? achat['details'] as List : [];
+        Map? detail;
+        if (details.isNotEmpty && detailIndex != null) {
+          detail = details.length > detailIndex ? details[detailIndex] : null;
         }
-      }
-    }
 
-    // ========= Ajout des collectes contrôlées "Miel filtré" SANS extraction =========
-    final collectesSnap = await FirebaseFirestore.instance
-        .collection('collectes')
-        .where('controle', isEqualTo: true)
-        .get();
-
-    for (final doc in collectesSnap.docs) {
-      final collecte = doc.data();
-      final collecteId = doc.id;
-      final type = collecte['type']?.toString()?.toLowerCase();
-
-      // On cherche le controle associé
-      final controle = controleSnap.docs
-          .map((d) => d.data())
-          .firstWhereOrNull((c) => c['collecteId'] == collecteId);
-
-      if (controle == null) {
-        Get.snackbar("Contrôle manquant",
-            "Aucun contrôle trouvé pour la collecte $collecteId",
-            duration: Duration(seconds: 5));
-        continue;
-      }
-
-      // Pour les achats, le typeProduit est dans la sous-collection, donc on ne teste pas ici
-      if (type == 'récolte') {
-        final sousColl = await doc.reference.collection('Récolte').get();
-        for (final sousDoc in sousColl.docs) {
-          final r = sousDoc.data();
-          final typeProduit = r['typeProduit']?.toString()?.toLowerCase();
-          if (typeProduit == null) {
-            Get.snackbar("Type produit absent",
-                "Le typeProduit est manquant dans une Récolte de $collecteId",
-                duration: Duration(seconds: 5));
-            continue;
-          }
-          if (typeProduit != 'miel filtré') {
-            // Pas grave de ne pas notifier ici, mais tu peux log si besoin
-            continue;
-          }
-          final filtrage = filtrages.firstWhereOrNull(
-            (f) => f['collecteId'] == collecteId,
-          );
-          recoltes.add({
-            'id': collecteId,
-            'numeroLot': controle['numeroLot'],
-            'producteurNom': r['nomRecolteur'] ?? "",
-            'village': r['village'] ?? "",
-            'dateCollecte': (collecte['dateCollecte'] as Timestamp?)?.toDate(),
-            'typeProduit': "Miel Filtré",
-            'quantite': r['quantiteKg'] ?? 0,
-            'unite': 'kg',
-            'predominanceFlorale': r['predominanceFlorale'] ?? "",
-            'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
-            'utilisateur': collecte['utilisateurNom'] ?? "",
-            'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-            'quantiteEntree': filtrage?['quantiteEntree'],
-            'quantiteFiltree': filtrage?['quantiteFiltree'],
-            'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                : null,
-            'filtrageId': filtrage?['id'],
-          });
-        }
-      } else if (type == 'achat') {
-        // SCOOPS
-        final scoopsColl = await doc.reference.collection('SCOOP').get();
-        for (final achat in scoopsColl.docs) {
-          final a = achat.data();
-          final typeProduit = a['typeProduit']?.toString()?.toLowerCase();
-          if (typeProduit == null) {
-            Get.snackbar("Type produit absent",
-                "Le typeProduit est manquant dans un achat SCOOP de $collecteId",
-                duration: Duration(seconds: 5));
-            continue;
-          }
-          if (typeProduit != "miel filtré") {
-            // Get.snackbar("Type Produit différent", "type produit: $typeProduit (SCOOP $collecteId)", duration: Duration(seconds: 3));
-            continue;
-          }
-          final fournisseurColl =
-              await achat.reference.collection('SCOOP_info').get();
-          final fournisseur = fournisseurColl.docs.isNotEmpty
-              ? fournisseurColl.docs.first.data()
-              : {};
-          final filtrage = filtrages.firstWhereOrNull(
-            (f) => f['collecteId'] == collecteId,
-          );
-          achatsScoops.add({
-            'id': collecteId,
-            'numeroLot': controle['numeroLot'],
-            'producteurNom': fournisseur['nom'] ?? "",
-            'village': fournisseur['localite'] ?? "",
-            'dateCollecte': (collecte['dateCollecte'] as Timestamp?)?.toDate(),
-            'typeProduit': a['typeProduit'] ?? "Miel Filtré",
-            'quantite': a['quantite'] ?? 0,
-            'unite': a['unite'] ?? '',
-            'predominanceFlorale': fournisseur['predominanceFlorale'] ?? "",
-            'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
-            'utilisateur': collecte['utilisateurNom'] ?? "",
-            'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-            'quantiteEntree': filtrage?['quantiteEntree'],
-            'quantiteFiltree': filtrage?['quantiteFiltree'],
-            'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                : null,
-            'filtrageId': filtrage?['id'],
-          });
-        }
-        // INDIVIDUEL
-        final indColl = await doc.reference.collection('Individuel').get();
-        for (final achat in indColl.docs) {
-          final a = achat.data();
-          final typeProduit = a['typeProduit']?.toString()?.toLowerCase();
-          if (typeProduit == null) {
-            Get.snackbar("Type produit absent",
-                "Le typeProduit est manquant dans un achat Individuel de $collecteId",
-                duration: Duration(seconds: 5));
-            continue;
-          }
-          if (typeProduit != "miel filtré") {
-            // Get.snackbar("Type Produit différent", "type produit: $typeProduit (Ind $collecteId)", duration: Duration(seconds: 3));
-            continue;
-          }
-          final fournisseurColl =
-              await achat.reference.collection('Individuel_info').get();
-          final fournisseur = fournisseurColl.docs.isNotEmpty
-              ? fournisseurColl.docs.first.data()
-              : {};
-          final filtrage = filtrages.firstWhereOrNull(
-            (f) => f['collecteId'] == collecteId,
-          );
-          achatsIndividuels.add({
-            'id': collecteId,
-            'numeroLot': controle['numeroLot'],
-            'producteurNom': fournisseur['nomPrenom'] ?? "",
-            'village': fournisseur['localite'] ?? "",
-            'dateCollecte': (collecte['dateCollecte'] as Timestamp?)?.toDate(),
-            'typeProduit': a['typeProduit'] ?? "Miel Filtré",
-            'quantite': a['quantite'] ?? 0,
-            'unite': a['unite'] ?? '',
-            'predominanceFlorale': fournisseur['predominanceFlorale'] ?? "",
-            'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
-            'utilisateur': collecte['utilisateurNom'] ?? "",
-            'statutFiltrage': filtrage?['statutFiltrage'] ?? "Non filtré",
-            'quantiteEntree': filtrage?['quantiteEntree'],
-            'quantiteFiltree': filtrage?['quantiteFiltree'],
-            'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
-                ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
-                : null,
-            'filtrageId': filtrage?['id'],
-          });
-        }
-      }
-    }
-
-    // Liste toutes les collectes à vérifier (même si pas filtrées du tout)
-    final allCollectes = [...recoltes, ...achatsScoops, ...achatsIndividuels];
-
-    for (final collecte in allCollectes) {
-      final collecteId = collecte['id']?.toString();
-      final numeroLot = collecte['numeroLot']?.toString() ?? '';
-      final quantiteRecu =
-          double.tryParse(collecte['quantite']?.toString() ?? '0') ?? 0;
-      final unite = collecte['unite'] ?? 'kg';
-
-      // Vérifie si la collecte existe déjà dans la collection filtrage
-      final dejaFiltrage = filtrages.firstWhereOrNull(
-        (f) => f['collecteId']?.toString() == collecteId,
-      );
-
-      if (dejaFiltrage == null) {
-        // Crée un doc filtrage par défaut
-        await FirebaseFirestore.instance.collection('filtrage').add({
-          "collecteId": collecteId,
-          "lot": numeroLot,
-          "quantiteEntree": 0.0,
-          "quantiteFiltree": 0.0,
-          "quantiteRecu": quantiteRecu,
-          "unite": unite,
-          "statutFiltrage": "Non filtré",
-          "dateFiltrage": null,
-          "createdAt": DateTime.now(),
+        achatsIndividuels.add({
+          'id': collecteId,
+          'achatId': achatId,
+          'detailIndex': detailIndex,
+          'numeroLot': numeroLot,
+          'producteurNom': fournisseur['nomPrenom'] ?? "",
+          'producteurType': 'Individuel',
+          'commune': fournisseur['commune'] ?? "",
+          'quartier': fournisseur['quartier'] ?? "",
+          'village': fournisseur['village'] ?? fournisseur['localite'] ?? "",
+          'dateCollecte': dateCollecte,
+          'dateExtraction': extraction['dateExtraction'] is Timestamp
+              ? (extraction['dateExtraction'] as Timestamp).toDate()
+              : null,
+          'typeProduit': detail?['typeProduit'] ?? "",
+          'typeRuche': detail?['typeRuche'] ?? "",
+          'quantite': quantiteDepart,
+          'quantiteDepart': quantiteDepart,
+          'unite': detail?['unite'] ?? '',
+          'predominanceFlorale': controle['predominanceFlorale'] ??
+              fournisseur['predominanceFlorale'] ??
+              "",
+          'dateControle': (controle['dateControle'] as Timestamp?)?.toDate(),
+          'utilisateur': utilisateur,
+          'statutFiltrage': statutFiltrage,
+          'expirationFiltrage': expirationFiltrage,
+          'quantiteEntree': quantiteEntree,
+          'quantiteFiltree': quantiteFiltree,
+          'quantiteRestante': quantiteRestante,
+          'dateFiltrage': filtrage?['dateFiltrage'] is Timestamp
+              ? (filtrage?['dateFiltrage'] as Timestamp).toDate()
+              : null,
+          'filtrageId': filtrage?['id'],
         });
       }
     }
-
     isLoading.value = false;
   }
+}
 
-  /// Enregistre dans la collection filtrage toutes les collectes listées,
-  /// si absentes (pas de doc filtrage pour cette collecteId).
+extension<T> on Iterable<T> {
+  T? firstWhereOrNull(bool Function(T) test) {
+    for (var element in this) {
+      if (test(element)) return element;
+    }
+    return null;
+  }
 }

@@ -24,11 +24,10 @@ class _VenteFormPageState extends State<VenteFormPage> {
   double montantPaye = 0;
   double montantRestant = 0;
 
-  // Pour stocker la version "restante" du prélèvement (décrémentée)
   Map<String, int> maxPotsRestants = {};
   bool isLoading = true;
+  bool isSaving = false;
 
-  // Nouvelle: pour clients en temps réel
   Stream<List<Map<String, dynamic>>> get clientsStream {
     return FirebaseFirestore.instance
         .collection('clients')
@@ -46,7 +45,6 @@ class _VenteFormPageState extends State<VenteFormPage> {
   }
 
   Future<void> _loadVentesEtInit() async {
-    // 1. Récupérer toutes les ventes déjà faites sur ce prélèvement
     final snapshot = await FirebaseFirestore.instance
         .collection('ventes')
         .doc(widget.prelevement['commercialId'])
@@ -54,7 +52,6 @@ class _VenteFormPageState extends State<VenteFormPage> {
         .where('prelevementId', isEqualTo: widget.prelevement['id'])
         .get();
 
-    // 2. Calculer la quantité déjà vendue par type d'emballage
     Map<String, int> potsDejaVendus = {};
     for (var e in widget.prelevement['emballages'] ?? []) {
       potsDejaVendus[e['type']] = 0;
@@ -74,19 +71,16 @@ class _VenteFormPageState extends State<VenteFormPage> {
       }
     }
 
-    // 3. Calculer les max restants
     maxPotsRestants = {};
     for (final e in widget.prelevement['emballages'] ?? []) {
       final type = e['type'];
       final maxDispo = (e['nombre'] ?? 0) - (potsDejaVendus[type] ?? 0);
       maxPotsRestants[type] = maxDispo > 0 ? maxDispo : 0;
-      // Initialiser le contrôleur avec la valeur max restante (par défaut)
       nbPotsController[type] =
           TextEditingController(text: maxPotsRestants[type].toString());
       nbPotsController[type]!.addListener(_recalc);
     }
 
-    // 4. Initialiser les champs d'affichage
     _recalc();
 
     setState(() {
@@ -102,7 +96,6 @@ class _VenteFormPageState extends State<VenteFormPage> {
       final maxPots = maxPotsRestants[type] ?? 0;
       final textVal = nbPotsController[type]?.text ?? '';
       int currVal = int.tryParse(textVal) ?? 0;
-      // Clamp entre 0 et maxPots restants
       if (currVal > maxPots) {
         currVal = maxPots;
         nbPotsController[type]?.text = maxPots.toString();
@@ -134,42 +127,107 @@ class _VenteFormPageState extends State<VenteFormPage> {
     });
   }
 
+  bool get isFormValid {
+    if (!_formKey.currentState!.validate()) return false;
+    if (_clientId == null || _clientId!.isEmpty) return false;
+    if (_dateVente == null) return false;
+    if (quantiteTotale <= 0) return false;
+    if (montantTotal <= 0) return false;
+    for (final e in widget.prelevement['emballages'] ?? []) {
+      final type = e['type'];
+      final n = quantiteParType[type] ?? 0;
+      final maxPots = maxPotsRestants[type] ?? 0;
+      if (n < 0 || n > maxPots) return false;
+    }
+    if (montantPaye < 0 || montantRestant < 0) return false;
+    return true;
+  }
+
   Future<void> _saveVente() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
-    if (_clientId == null) {
+    if (_clientId == null || _clientId!.isEmpty) {
       Get.snackbar("Erreur", "Sélectionnez un client !");
       return;
     }
-    // Enregistrer la vente dans la sous-collection du commercial
-    final venteData = {
-      "dateVente": _dateVente,
-      "commercialId": widget.prelevement['commercialId'],
-      "clientId": _clientId,
-      "prelevementId": widget.prelevement['id'],
-      "typeVente": typeVente,
-      "emballagesVendus": [
-        for (final e in widget.prelevement['emballages'] ?? [])
-          {
-            "type": e['type'],
-            "nombre": quantiteParType[e['type']] ?? 0,
-            "contenanceKg": e['contenanceKg'],
-            "prixUnitaire": e['prixUnitaire'],
-            "prixTotal": (quantiteParType[e['type']] ?? 0) * e['prixUnitaire'],
-          }
-      ],
-      "quantiteTotale": quantiteTotale,
-      "montantTotal": montantTotal,
-      "montantPaye": montantPaye,
-      "montantRestant": montantTotal - montantPaye,
-      "createdAt": FieldValue.serverTimestamp(),
-    };
-    await FirebaseFirestore.instance
-        .collection('ventes')
-        .doc(widget.prelevement['commercialId'])
-        .collection('ventes_effectuees')
-        .add(venteData);
-    Get.snackbar("Succès", "Vente enregistrée !");
-    Get.back();
+    if (_dateVente == null) {
+      Get.snackbar("Erreur", "Sélectionnez la date de vente !");
+      return;
+    }
+    if (quantiteTotale <= 0) {
+      Get.snackbar("Erreur", "Saisissez au moins une quantité à vendre !");
+      return;
+    }
+    if (montantTotal <= 0) {
+      Get.snackbar("Erreur", "Le montant total doit être supérieur à zéro !");
+      return;
+    }
+    for (final e in widget.prelevement['emballages'] ?? []) {
+      final type = e['type'];
+      final n = quantiteParType[type] ?? 0;
+      final maxPots = maxPotsRestants[type] ?? 0;
+      if (n < 0) {
+        Get.snackbar("Erreur", "Quantité négative non autorisée !");
+        return;
+      }
+      if (n > maxPots) {
+        Get.snackbar(
+            "Erreur", "Quantité pour $type supérieure au disponible !");
+        return;
+      }
+    }
+    if (montantPaye < 0 || montantRestant < 0) {
+      Get.snackbar("Erreur", "Montants invalides !");
+      return;
+    }
+
+    setState(() {
+      isSaving = true;
+    });
+
+    try {
+      final venteData = {
+        "dateVente":
+            _dateVente != null ? Timestamp.fromDate(_dateVente!) : null,
+        "commercialId": widget.prelevement['commercialId'],
+        "clientId": _clientId,
+        "prelevementId": widget.prelevement['id'],
+        "typeVente": typeVente,
+        "emballagesVendus": [
+          for (final e in widget.prelevement['emballages'] ?? [])
+            {
+              "type": e['type'],
+              "nombre": quantiteParType[e['type']] ?? 0,
+              "contenanceKg": e['contenanceKg'],
+              "prixUnitaire": e['prixUnitaire'],
+              "prixTotal":
+                  (quantiteParType[e['type']] ?? 0) * e['prixUnitaire'],
+            }
+        ],
+        "quantiteTotale": quantiteTotale,
+        "montantTotal": montantTotal,
+        "montantPaye": montantPaye,
+        "montantRestant": montantTotal - montantPaye,
+        "createdAt": FieldValue.serverTimestamp(),
+      };
+      await FirebaseFirestore.instance
+          .collection('ventes')
+          .doc(widget.prelevement['commercialId'])
+          .collection('ventes_effectuees')
+          .add(venteData);
+
+      Get.snackbar("Succès", "Vente enregistrée !");
+      // On revient à la page précédente et on déclenche un refresh
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      Get.snackbar("Erreur", "Erreur lors de l'enregistrement : $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
   }
 
   @override
@@ -189,9 +247,12 @@ class _VenteFormPageState extends State<VenteFormPage> {
                   children: [
                     // Date de vente
                     ListTile(
-                      title: Text(_dateVente != null
-                          ? "Date : ${_dateVente!.day}/${_dateVente!.month}/${_dateVente!.year}"
-                          : "Sélectionner la date de vente"),
+                      title: Text(
+                          _dateVente != null
+                              ? "Date : ${_dateVente!.day}/${_dateVente!.month}/${_dateVente!.year}"
+                              : "Sélectionner la date de vente",
+                          style: TextStyle(
+                              color: _dateVente == null ? Colors.red : null)),
                       trailing: const Icon(Icons.calendar_today),
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -203,6 +264,12 @@ class _VenteFormPageState extends State<VenteFormPage> {
                         if (picked != null) setState(() => _dateVente = picked);
                       },
                     ),
+                    if (_dateVente == null)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8.0, bottom: 8),
+                        child: Text("La date est obligatoire.",
+                            style: TextStyle(color: Colors.red, fontSize: 12)),
+                      ),
                     const SizedBox(height: 10),
                     // Client existant ou nouveau (en temps réel)
                     StreamBuilder<List<Map<String, dynamic>>>(
@@ -223,7 +290,12 @@ class _VenteFormPageState extends State<VenteFormPage> {
                                         ))
                                     .toList(),
                                 decoration: const InputDecoration(
-                                    labelText: "Nom du client"),
+                                  labelText: "Nom du client",
+                                  errorStyle: TextStyle(color: Colors.red),
+                                ),
+                                validator: (v) => v == null || v.isEmpty
+                                    ? "Obligatoire"
+                                    : null,
                                 onChanged: (v) => setState(() => _clientId = v),
                               ),
                             ),
@@ -262,6 +334,7 @@ class _VenteFormPageState extends State<VenteFormPage> {
                           .toList(),
                       decoration:
                           const InputDecoration(labelText: "Type de vente"),
+                      validator: (v) => v == null ? "Obligatoire" : null,
                       onChanged: (v) {
                         setState(() {
                           typeVente = v ?? "Comptant";
@@ -301,6 +374,9 @@ class _VenteFormPageState extends State<VenteFormPage> {
                                   const InputDecoration(labelText: "Nb pots"),
                               validator: (v) {
                                 final num = int.tryParse(v ?? '') ?? 0;
+                                if (v == null || v.isEmpty) {
+                                  return "Obligatoire";
+                                }
                                 if (num < 0) return "Invalide";
                                 if (num > maxPots) return "Max: $maxPots";
                                 return null;
@@ -344,18 +420,51 @@ class _VenteFormPageState extends State<VenteFormPage> {
                       keyboardType: TextInputType.number,
                       initialValue:
                           montantPaye > 0 ? montantPaye.toString() : "",
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          if (typeVente == "Comptant") {
+                            return "Obligatoire";
+                          }
+                          return null;
+                        }
+                        final num = double.tryParse(v) ?? 0;
+                        if (num < 0) return "Invalide";
+                        if (num > montantTotal)
+                          return "Max: ${montantTotal.toStringAsFixed(0)}";
+                        return null;
+                      },
                       onChanged: _onMontantPayeChanged,
                     ),
                     Text(
                         "Montant restant à payer : ${montantRestant < 0 ? 0 : montantRestant.toStringAsFixed(0)} FCFA"),
                     const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text("Enregistrer la vente"),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700]),
-                      onPressed: _saveVente,
-                    )
+                    SizedBox(
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        icon: isSaving
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: Text(
+                          isSaving
+                              ? "Enregistrement en cours..."
+                              : "Enregistrer la vente",
+                        ),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            textStyle: const TextStyle(fontSize: 18),
+                            minimumSize: const Size(180, 50),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13))),
+                        onPressed: isSaving ? null : _saveVente,
+                      ),
+                    ),
                   ],
                 ),
               ),

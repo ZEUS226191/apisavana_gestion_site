@@ -24,62 +24,69 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
   List<Map<String, dynamic>> magasiniers = [];
   List<Map<String, dynamic>> commerciaux = [];
 
-  static const Map<String, double> prixPot = {
-    "1.5Kg": 5000,
-    "1Kg": 4000,
-    "720g": 3000,
-    "500g": 2100,
-    "250g": 1200,
-    "30g": 1800,
-    "Stick 20g": 1800,
-  };
-  static const Map<String, double> potKg = {
+  final Map<String, double> potKg = {
     "1.5Kg": 1.5,
     "1Kg": 1.0,
     "720g": 0.72,
     "500g": 0.5,
     "250g": 0.25,
-    "30g": 0.03,
+    "Pot alvéoles 30g": 0.03,
     "Stick 20g": 0.02,
+    "7kg": 7.0,
   };
-  static const Map<String, IconData> potIcons = {
+
+  final Map<String, IconData> potIcons = {
     "1.5Kg": Icons.local_drink,
     "1Kg": Icons.water,
     "720g": Icons.emoji_food_beverage,
     "500g": Icons.wine_bar,
     "250g": Icons.local_cafe,
-    "30g": Icons.coffee,
+    "Pot alvéoles 30g": Icons.coffee,
     "Stick 20g": Icons.sticky_note_2,
+    "7kg": Icons.liquor,
+  };
+
+  // Ces prix sont donnés à titre d'exemple, adapte-les à ta logique
+  static const Map<String, double> prixGrosMilleFleurs = {
+    "Stick 20g": 1500,
+    "Pot alvéoles 30g": 36000,
+    "250g": 950,
+    "500g": 1800,
+    "1Kg": 3400,
+    "720g": 2500,
+    "1.5Kg": 4500,
+    "7kg": 23000,
+  };
+  static const Map<String, double> prixGrosMonoFleur = {
+    "250g": 1750,
+    "500g": 3000,
+    "1Kg": 5000,
+    "720g": 3500,
+    "1.5Kg": 6000,
+    "7kg": 34000,
+    "Stick 20g": 1500,
+    "Pot alvéoles 30g": 36000,
   };
 
   Map<String, bool> emballageSelection = {};
   Map<String, TextEditingController> nbPotsController = {};
+  List<String> typesEmballageDisponibles = [];
+  Map<String, int> potsRestantsParType = {};
 
   double quantiteTotale = 0;
   double prixTotalEstime = 0;
   List<Map<String, dynamic>> _emballages = [];
 
-  Map<String, int> potsRestantsParType = {};
+  String? predominanceFlorale;
 
   @override
   void initState() {
     super.initState();
-    for (final t in prixPot.keys) {
-      emballageSelection[t] = false;
-      nbPotsController[t] = TextEditingController();
-      nbPotsController[t]!.addListener(_recalc);
-    }
-    _loadData();
-    _loadPotsRestants();
+    _loadUserData();
+    _loadPrRecuEtStock();
   }
 
-  @override
-  void dispose() {
-    nbPotsController.values.forEach((c) => c.dispose());
-    super.dispose();
-  }
-
-  Future<void> _loadData() async {
+  Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final userDoc = await FirebaseFirestore.instance
@@ -114,29 +121,51 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       if (currentUserRole == "Magazinier") {
         _magazinierId = currentUserId;
         _commercialId = commerciaux.isNotEmpty ? commerciaux.first['id'] : null;
-      } else if (currentUserRole == "Commercial(e)") {
+      } else if (currentUserRole == "Commercial(e)" ||
+          currentUserRole == "Commercial") {
         _commercialId = currentUserId;
         _magazinierId = magasiniers.isNotEmpty ? magasiniers.first['id'] : null;
       }
     });
   }
 
-  Future<void> _loadPotsRestants() async {
-    // Calculer le stock restant pour chaque type d'emballage (sur ce lot)
+  Future<void> _loadPrRecuEtStock() async {
+    // On récupère le prélèvement (magasinier) reçu pour ce lot et ce magasinier
     final lotId = widget.lotConditionnement['id'];
-    final Map<String, int> stockInitial = {};
-    if (widget.lotConditionnement['emballages'] != null) {
-      for (var emb in widget.lotConditionnement['emballages']) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final prRecuSnap = await FirebaseFirestore.instance
+        .collection('prelevements')
+        .where('lotConditionnementId', isEqualTo: lotId)
+        .where('typePrelevement', isEqualTo: 'magasinier')
+        .where('magasinierDestId', isEqualTo: user.uid)
+        .limit(1)
+        .get();
+    if (prRecuSnap.docs.isEmpty) {
+      // Pas de stock reçu sur ce lot !
+      setState(() {
+        typesEmballageDisponibles = [];
+        potsRestantsParType = {};
+      });
+      return;
+    }
+    final prRecu = prRecuSnap.docs.first.data();
+    // Les types d'emballage et leur stock
+    Map<String, int> stockInitial = {};
+    if (prRecu['emballages'] != null) {
+      for (var emb in prRecu['emballages']) {
         stockInitial[emb['type']] = emb['nombre'];
       }
     }
-    // Charger tous les prélèvements déjà faits sur ce lot
-    final prelevSnap = await FirebaseFirestore.instance
+    // Calculer les prélèvements faits à des commerciaux
+    final prelevComSnap = await FirebaseFirestore.instance
         .collection('prelevements')
         .where('lotConditionnementId', isEqualTo: lotId)
+        .where('typePrelevement', isEqualTo: 'commercial')
+        .where('magazinierId', isEqualTo: user.uid)
         .get();
-    final Map<String, int> stockRestant = Map<String, int>.from(stockInitial);
-    for (var doc in prelevSnap.docs) {
+    Map<String, int> stockRestant = Map<String, int>.from(stockInitial);
+    for (var doc in prelevComSnap.docs) {
       final data = doc.data();
       if (data['emballages'] != null) {
         for (var emb in data['emballages']) {
@@ -147,29 +176,82 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       }
     }
     setState(() {
+      typesEmballageDisponibles = stockInitial.keys.toList();
       potsRestantsParType = stockRestant;
+      predominanceFlorale =
+          prRecu['predominanceFlorale']?.toString().toLowerCase() ??
+              (widget.lotConditionnement['predominanceFlorale'] ?? '')
+                  .toString()
+                  .toLowerCase();
+      for (final t in typesEmballageDisponibles) {
+        emballageSelection[t] = false;
+        nbPotsController[t] = TextEditingController();
+        nbPotsController[t]!.addListener(_recalc);
+      }
     });
+  }
+
+  double getPrixAuto(String type) {
+    final florale = predominanceFlorale ?? '';
+    final isMono = _isMonoFleur(florale);
+    if (isMono) {
+      return prixGrosMonoFleur[type] ?? prixGrosMilleFleurs[type] ?? 0.0;
+    } else {
+      return prixGrosMilleFleurs[type] ?? 0.0;
+    }
+  }
+
+  bool _isMonoFleur(String florale) {
+    if (florale.contains("mono")) return true;
+    if (florale.contains("mille") || florale.contains("mixte")) return false;
+    if (florale.contains("+") || florale.contains(",")) return false;
+    return florale.trim().isNotEmpty;
   }
 
   void _recalc() {
     double qte = 0;
     double prix = 0;
     _emballages = [];
-    for (final type in prixPot.keys) {
+    for (final type in typesEmballageDisponibles) {
       if (!emballageSelection[type]!) continue;
       final n = int.tryParse(nbPotsController[type]?.text ?? '') ?? 0;
-      final prixu = prixPot[type]!;
-      final kg = potKg[type]!;
+      final prixu = getPrixAuto(type);
+      final kg = potKg[type] ?? 0.0;
       if (n > 0) {
-        qte += n * kg;
-        prix += n * prixu;
-        _emballages.add({
-          "type": type,
-          "nombre": n,
-          "contenanceKg": kg,
-          "prixUnitaire": prixu,
-          "prixTotal": n * prixu,
-        });
+        if (type == "Stick 20g") {
+          qte += n * 10 * 0.02;
+          prix += n * prixu;
+          _emballages.add({
+            "type": type,
+            "mode": "Paquet (10)",
+            "nombre": n * 10,
+            "contenanceKg": 0.02,
+            "prixUnitaire": prixu,
+            "prixTotal": n * prixu,
+          });
+        } else if (type == "Pot alvéoles 30g") {
+          qte += n * 200 * 0.03;
+          prix += n * prixu;
+          _emballages.add({
+            "type": type,
+            "mode": "Carton (200)",
+            "nombre": n * 200,
+            "contenanceKg": 0.03,
+            "prixUnitaire": prixu,
+            "prixTotal": n * prixu,
+          });
+        } else {
+          qte += n * kg;
+          prix += n * prixu;
+          _emballages.add({
+            "type": type,
+            "mode": "Gros",
+            "nombre": n,
+            "contenanceKg": kg,
+            "prixUnitaire": prixu,
+            "prixTotal": n * prixu,
+          });
+        }
       }
     }
     setState(() {
@@ -179,7 +261,7 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
   }
 
   bool get isValidEmballages {
-    for (final type in prixPot.keys) {
+    for (final type in typesEmballageDisponibles) {
       if (emballageSelection[type] == true) {
         final txt = nbPotsController[type]?.text ?? '';
         final n = int.tryParse(txt);
@@ -204,18 +286,32 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       Get.snackbar("Erreur", "Veuillez remplir tous les champs obligatoires.");
       return;
     }
-    final double lotConditionne =
-        (widget.lotConditionnement['quantiteConditionnee'] ?? 0.0).toDouble();
+    // Le stock total maximal pour ce mag simple
+    final double lotConditionne = potsRestantsParType.values.fold<double>(
+        0.0, (prev, val) => prev + ((val ?? 0) as int).toDouble());
     if (quantiteTotale > lotConditionne) {
       Get.snackbar("Erreur",
-          "La quantité prélevée dépasse le stock disponible (${lotConditionne.toStringAsFixed(2)} kg) !");
+          "La quantité prélevée dépasse le stock disponible (${lotConditionne.toStringAsFixed(2)} pots) !");
       return;
     }
-    // Vérification finale pour chaque type d'emballage
-    for (final type in prixPot.keys) {
+    for (final type in typesEmballageDisponibles) {
       if (emballageSelection[type] == true) {
         final n = int.tryParse(nbPotsController[type]?.text ?? '') ?? 0;
-        if (n > (potsRestantsParType[type] ?? 0)) {
+        if (type == "Stick 20g" &&
+            (n * 10 > (potsRestantsParType[type] ?? 0))) {
+          Get.snackbar("Erreur",
+              "Vous ne pouvez pas prélever plus de ${potsRestantsParType[type] ?? 0} sticks (par paquets de 10) pour $type.");
+          return;
+        }
+        if (type == "Pot alvéoles 30g" &&
+            (n * 200 > (potsRestantsParType[type] ?? 0))) {
+          Get.snackbar("Erreur",
+              "Vous ne pouvez pas prélever plus de ${potsRestantsParType[type] ?? 0} pots alvéoles (par cartons de 200) pour $type.");
+          return;
+        }
+        if (type != "Stick 20g" &&
+            type != "Pot alvéoles 30g" &&
+            (n > (potsRestantsParType[type] ?? 0))) {
           Get.snackbar("Erreur",
               "Vous ne pouvez pas prélever plus de ${potsRestantsParType[type] ?? 0} pots pour $type.");
           return;
@@ -230,21 +326,20 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
               orElse: () => currentUserDoc ?? {})['nom'] ??
           "",
       "magazinierId": _magazinierId,
-      "magazinierNom": magasiniers.firstWhere((m) => m['id'] == _magazinierId,
+      "magasinierNom": magasiniers.firstWhere((m) => m['id'] == _magazinierId,
               orElse: () => currentUserDoc ?? {})['nom'] ??
           "",
       "emballages": _emballages,
       "quantiteTotale": quantiteTotale,
       "prixTotalEstime": prixTotalEstime,
       "lotConditionnementId": widget.lotConditionnement['id'],
+      "typePrelevement": "commercial",
       "createdAt": FieldValue.serverTimestamp(),
     });
 
     Get.snackbar("Succès", "Prélèvement enregistré !");
     Get.back(result: true);
-    Get.back(result: true);
 
-    // Réinitialisation des champs
     setState(() {
       _date = null;
       emballageSelection.updateAll((key, value) => false);
@@ -257,7 +352,8 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
   @override
   Widget build(BuildContext context) {
     final isMagazinier = currentUserRole == "Magazinier";
-    final isCommercial = currentUserRole == "Commercial";
+    final isCommercial =
+        currentUserRole == "Commercial" || currentUserRole == "Commercial(e)";
 
     return Scaffold(
       appBar: AppBar(
@@ -284,275 +380,316 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
                     icon: const Icon(Icons.refresh),
                     label: const Text("Rafraîchir"),
                     onPressed: () {
-                      _loadData();
-                      _loadPotsRestants();
+                      _loadUserData();
+                      _loadPrRecuEtStock();
                     },
                   ),
                 ],
               ),
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    // Date prélèvement
-                    ListTile(
-                      leading:
-                          const Icon(Icons.calendar_today, color: Colors.green),
-                      title: Text(
-                        _date != null
-                            ? "Date : ${_date!.day}/${_date!.month}/${_date!.year}"
-                            : "Sélectionner la date de prélèvement",
-                        style: TextStyle(
-                            color: _date == null ? Colors.red : Colors.black),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit_calendar,
-                            color: Colors.green),
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _date ?? DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) setState(() => _date = picked);
-                        },
-                      ),
+          : typesEmballageDisponibles.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(28.0),
+                    child: Text(
+                      "Vous n'avez reçu aucun stock sur ce lot.",
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
-                    if (_date == null)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 16.0, bottom: 6),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("La date est obligatoire.",
-                              style:
-                                  TextStyle(color: Colors.red, fontSize: 12)),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        // Date prélèvement
+                        ListTile(
+                          leading: const Icon(Icons.calendar_today,
+                              color: Colors.green),
+                          title: Text(
+                            _date != null
+                                ? "Date : ${_date!.day}/${_date!.month}/${_date!.year}"
+                                : "Sélectionner la date de prélèvement",
+                            style: TextStyle(
+                                color:
+                                    _date == null ? Colors.red : Colors.black),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.edit_calendar,
+                                color: Colors.green),
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _date ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null)
+                                setState(() => _date = picked);
+                            },
+                          ),
                         ),
-                      ),
-                    const Divider(height: 25),
-                    // Commercial (auto si commercial, dropdown si magazinier)
-                    ListTile(
-                      leading: const Icon(Icons.person, color: Colors.indigo),
-                      title: const Text("Commercial"),
-                      subtitle: isCommercial
-                          ? Text(currentUserDoc?['nom'] ?? "Chargement...",
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold))
-                          : DropdownButtonFormField<String>(
-                              value: _commercialId,
-                              items: commerciaux
-                                  .map((c) => DropdownMenuItem<String>(
-                                        value: c['id'] as String,
-                                        child: Text(c['nom'] ??
-                                            c['email'] ??
-                                            "Commercial(e)"),
-                                      ))
-                                  .toList(),
-                              onChanged: (v) =>
-                                  setState(() => _commercialId = v),
-                              decoration:
-                                  const InputDecoration.collapsed(hintText: ""),
-                              validator: (v) =>
-                                  v == null ? "Obligatoire" : null,
+                        if (_date == null)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 16.0, bottom: 6),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text("La date est obligatoire.",
+                                  style: TextStyle(
+                                      color: Colors.red, fontSize: 12)),
                             ),
-                      trailing: CircleAvatar(
-                        backgroundColor: Colors.indigo[100],
-                        backgroundImage:
-                            isCommercial && currentUserDoc?['photoUrl'] != null
-                                ? NetworkImage(currentUserDoc!['photoUrl'])
-                                : null,
-                        child: (!isCommercial ||
-                                currentUserDoc?['photoUrl'] == null)
-                            ? const Icon(Icons.person, color: Colors.indigo)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    // Magasinier (auto si magasinier, dropdown si commercial)
-                    ListTile(
-                      leading: const Icon(Icons.store, color: Colors.brown),
-                      title: const Text("Magazinier"),
-                      subtitle: isMagazinier
-                          ? Text(currentUserDoc?['nom'] ?? "Chargement...",
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold))
-                          : DropdownButtonFormField<String>(
-                              value: _magazinierId,
-                              items: magasiniers
-                                  .map((m) => DropdownMenuItem<String>(
-                                        value: m['id'] as String,
-                                        child: Text(m['nom'] ??
-                                            m['email'] ??
-                                            "Magazinier"),
-                                      ))
-                                  .toList(),
-                              onChanged: (v) =>
-                                  setState(() => _magazinierId = v),
-                              decoration:
-                                  const InputDecoration.collapsed(hintText: ""),
-                              validator: (v) =>
-                                  v == null ? "Obligatoire" : null,
-                            ),
-                      trailing: CircleAvatar(
-                        backgroundColor: Colors.brown[100],
-                        backgroundImage:
-                            isMagazinier && currentUserDoc?['photoUrl'] != null
-                                ? NetworkImage(currentUserDoc!['photoUrl'])
-                                : null,
-                        child: (!isMagazinier ||
-                                currentUserDoc?['photoUrl'] == null)
-                            ? const Icon(Icons.store, color: Colors.brown)
-                            : null,
-                      ),
-                    ),
-                    const Divider(height: 30),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: const [
-                          Icon(Icons.inventory, color: Colors.amber),
-                          SizedBox(width: 8),
-                          Text("Type d'emballage prélevé",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...prixPot.keys.map((type) {
-                      final selected = emballageSelection[type]!;
-                      final stockRestant = potsRestantsParType[type] ?? 0;
-                      return Card(
-                        color: selected ? Colors.amber[50] : Colors.grey[100],
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(13)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 7, horizontal: 10),
-                          child: Row(
-                            children: [
-                              Switch(
-                                value: selected,
-                                activeColor: Colors.amber[700],
-                                onChanged: (v) {
-                                  setState(() {
-                                    emballageSelection[type] = v;
-                                    if (!v) {
-                                      nbPotsController[type]?.clear();
-                                    } else if ((nbPotsController[type]?.text ??
-                                            "")
-                                        .isEmpty) {
-                                      nbPotsController[type]?.text = "1";
-                                    }
-                                    _recalc();
-                                  });
-                                },
-                              ),
-                              Icon(potIcons[type],
-                                  color: Colors.amber[900], size: 27),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(type,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15)),
-                              ),
-                              const SizedBox(width: 10),
-                              SizedBox(
-                                width: 90, // Agrandi ici
-                                child: TextFormField(
-                                  enabled: selected,
-                                  controller: nbPotsController[type],
-                                  keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                    labelText: "Nb",
-                                    isDense: true,
-                                    prefixIcon: const Icon(
-                                        Icons.confirmation_number,
-                                        size: 18),
-                                    suffixText: "/$stockRestant",
-                                  ),
-                                  validator: (v) {
-                                    if (!selected) return null;
-                                    if (v == null || v.isEmpty) return "!";
-                                    final n = int.tryParse(v);
-                                    if (n == null || n <= 0) return "!";
-                                    if (n > stockRestant)
-                                      return "Max: $stockRestant";
-                                    return null;
-                                  },
+                          ),
+                        const Divider(height: 25),
+                        // Commercial (auto si commercial, dropdown si magazinier)
+                        ListTile(
+                          leading:
+                              const Icon(Icons.person, color: Colors.indigo),
+                          title: const Text("Commercial"),
+                          subtitle: isCommercial
+                              ? Text(currentUserDoc?['nom'] ?? "Chargement...",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold))
+                              : DropdownButtonFormField<String>(
+                                  value: _commercialId,
+                                  items: commerciaux
+                                      .map((c) => DropdownMenuItem<String>(
+                                            value: c['id'] as String,
+                                            child: Text(c['nom'] ??
+                                                c['email'] ??
+                                                "Commercial(e)"),
+                                          ))
+                                      .toList(),
+                                  onChanged: (v) =>
+                                      setState(() => _commercialId = v),
+                                  decoration: const InputDecoration.collapsed(
+                                      hintText: ""),
+                                  validator: (v) =>
+                                      v == null ? "Obligatoire" : null,
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  const Text("Prix",
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13)),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.monetization_on,
-                                          color: Colors.green[800], size: 18),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        "${prixPot[type]!.toStringAsFixed(0)} FCFA",
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              )
+                          trailing: CircleAvatar(
+                            backgroundColor: Colors.indigo[100],
+                            backgroundImage: isCommercial &&
+                                    currentUserDoc?['photoUrl'] != null
+                                ? NetworkImage(currentUserDoc!['photoUrl'])
+                                : null,
+                            child: (!isCommercial ||
+                                    currentUserDoc?['photoUrl'] == null)
+                                ? const Icon(Icons.person, color: Colors.indigo)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        // Magasinier (auto si magasinier, dropdown si commercial)
+                        ListTile(
+                          leading: const Icon(Icons.store, color: Colors.brown),
+                          title: const Text("Magazinier"),
+                          subtitle: isMagazinier
+                              ? Text(currentUserDoc?['nom'] ?? "Chargement...",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold))
+                              : DropdownButtonFormField<String>(
+                                  value: _magazinierId,
+                                  items: magasiniers
+                                      .map((m) => DropdownMenuItem<String>(
+                                            value: m['id'] as String,
+                                            child: Text(m['nom'] ??
+                                                m['email'] ??
+                                                "Magazinier"),
+                                          ))
+                                      .toList(),
+                                  onChanged: (v) =>
+                                      setState(() => _magazinierId = v),
+                                  decoration: const InputDecoration.collapsed(
+                                      hintText: ""),
+                                  validator: (v) =>
+                                      v == null ? "Obligatoire" : null,
+                                ),
+                          trailing: CircleAvatar(
+                            backgroundColor: Colors.brown[100],
+                            backgroundImage: isMagazinier &&
+                                    currentUserDoc?['photoUrl'] != null
+                                ? NetworkImage(currentUserDoc!['photoUrl'])
+                                : null,
+                            child: (!isMagazinier ||
+                                    currentUserDoc?['photoUrl'] == null)
+                                ? const Icon(Icons.store, color: Colors.brown)
+                                : null,
+                          ),
+                        ),
+                        const Divider(height: 30),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            children: const [
+                              Icon(Icons.inventory, color: Colors.amber),
+                              SizedBox(width: 8),
+                              Text("Type d'emballage prélevé",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
                             ],
                           ),
                         ),
-                      );
-                    }).toList(),
-                    const Divider(height: 30),
-                    Row(
-                      children: [
-                        Icon(Icons.scale, color: Colors.amber[700]),
-                        const SizedBox(width: 8),
-                        Text("Quantité totale : ",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text("${quantiteTotale.toStringAsFixed(2)} kg"),
+                        const SizedBox(height: 10),
+                        ...typesEmballageDisponibles.map((type) {
+                          final selected = emballageSelection[type] ?? false;
+                          final stockRestant = potsRestantsParType[type] ?? 0;
+                          return Card(
+                            color:
+                                selected ? Colors.amber[50] : Colors.grey[100],
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13)),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 7, horizontal: 10),
+                              child: Row(
+                                children: [
+                                  Switch(
+                                    value: selected,
+                                    activeColor: Colors.amber[700],
+                                    onChanged: (v) {
+                                      setState(() {
+                                        emballageSelection[type] = v;
+                                        if (!v) {
+                                          nbPotsController[type]?.clear();
+                                        } else if ((nbPotsController[type]
+                                                    ?.text ??
+                                                "")
+                                            .isEmpty) {
+                                          nbPotsController[type]?.text = "1";
+                                        }
+                                        _recalc();
+                                      });
+                                    },
+                                  ),
+                                  Icon(potIcons[type],
+                                      color: Colors.amber[900], size: 27),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(type,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15)),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 150,
+                                    child: TextFormField(
+                                      enabled: selected,
+                                      controller: nbPotsController[type],
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        labelText: "Nb",
+                                        isDense: true,
+                                        prefixIcon: const Icon(
+                                            Icons.confirmation_number,
+                                            size: 18),
+                                        suffixText: type == "Stick 20g"
+                                            ? "/${(potsRestantsParType[type] ?? 0) ~/ 10} paquets"
+                                            : type == "Pot alvéoles 30g"
+                                                ? "/${(potsRestantsParType[type] ?? 0) ~/ 200} cartons"
+                                                : "/$stockRestant",
+                                      ),
+                                      validator: (v) {
+                                        if (!selected) return null;
+                                        if (v == null || v.isEmpty) return "!";
+                                        final n = int.tryParse(v);
+                                        if (n == null || n <= 0) return "!";
+                                        if (type == "Stick 20g") {
+                                          if ((n * 10) >
+                                              (potsRestantsParType[type] ??
+                                                  0)) {
+                                            return "Max: ${(potsRestantsParType[type] ?? 0) ~/ 10}";
+                                          }
+                                        } else if (type == "Pot alvéoles 30g") {
+                                          if ((n * 200) >
+                                              (potsRestantsParType[type] ??
+                                                  0)) {
+                                            return "Max: ${(potsRestantsParType[type] ?? 0) ~/ 200}";
+                                          }
+                                        } else {
+                                          if (n >
+                                              (potsRestantsParType[type] ??
+                                                  0)) {
+                                            return "Max: $stockRestant";
+                                          }
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      const Text("Prix",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13)),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.monetization_on,
+                                              color: Colors.green[800],
+                                              size: 18),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            "${getPrixAuto(type).toStringAsFixed(0)} FCFA",
+                                            style: const TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  )
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                        const Divider(height: 30),
+                        Row(
+                          children: [
+                            Icon(Icons.scale, color: Colors.amber[700]),
+                            const SizedBox(width: 8),
+                            Text("Quantité totale : ",
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text("${quantiteTotale.toStringAsFixed(2)} kg"),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(Icons.monetization_on,
+                                color: Colors.green[800]),
+                            const SizedBox(width: 8),
+                            Text("Prix estimé : ",
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text("${prixTotalEstime.toStringAsFixed(0)} FCFA"),
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.save),
+                          label: const Text("Enregistrer le prélèvement"),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  isFormValid ? Colors.green[700] : Colors.grey,
+                              minimumSize: const Size(220, 45),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13),
+                              )),
+                          onPressed: isFormValid ? _save : null,
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(Icons.monetization_on, color: Colors.green[800]),
-                        const SizedBox(width: 8),
-                        Text("Prix estimé : ",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text("${prixTotalEstime.toStringAsFixed(0)} FCFA"),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text("Enregistrer le prélèvement"),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              isFormValid ? Colors.green[700] : Colors.grey,
-                          minimumSize: const Size(220, 45),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(13),
-                          )),
-                      onPressed: isFormValid ? _save : null,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
     );
   }
 }

@@ -4020,3 +4020,147 @@ const Map<String, List<String>> villagesParCommune = {
     "Logo",
   ]
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+const Map<String, List<String>> ArrondissementsParCommune = {
+  "Ouagadougou": [
+    "Arrondissement 1",
+    "Arrondissement 2",
+    "Arrondissement 3",
+    "Arrondissement 4",
+    "Arrondissement 5",
+    "Arrondissement 6",
+    "Arrondissement 7",
+    "Arrondissement 8",
+    "Arrondissement 9",
+    "Arrondissement 10",
+    "Arrondissement 11",
+    "Arrondissement 12",
+  ],
+  "Bobo-Dioulasso": [
+    "Arrondissement 1 (Dô)",
+    "Arrondissement 2 (Bolon)",
+    "Arrondissement 3 (Sarasso)",
+    "Arrondissement 4 (Kuinima)",
+    "Arrondissement 5 (Nasséré)",
+    "Arrondissement 6 (Tounouma)",
+    "Arrondissement 7 (Dafra)",
+  ],
+};
+
+const Map<String, List<String>> secteursParArrondissement = {
+  // Ouagadougou
+  "Ouagadougou_Arrondissement 1": ["1"],
+  "Ouagadougou_Arrondissement 2": ["2"],
+  "Ouagadougou_Arrondissement 3": ["3"],
+  "Ouagadougou_Arrondissement 4": ["4"],
+  "Ouagadougou_Arrondissement 5": ["5"],
+  "Ouagadougou_Arrondissement 6": ["6"],
+  "Ouagadougou_Arrondissement 7": ["7", "25", "26", "27", "28", "29", "30"],
+  "Ouagadougou_Arrondissement 8": ["8"],
+  "Ouagadougou_Arrondissement 9": ["9"],
+  "Ouagadougou_Arrondissement 10": ["10"],
+  "Ouagadougou_Arrondissement 11": ["11"],
+  "Ouagadougou_Arrondissement 12": ["12"],
+
+  // Bobo-Dioulasso
+  "Bobo-Dioulasso_Arrondissement 1 (Dô)": ["1", "2", "3", "4", "5", "6"],
+  "Bobo-Dioulasso_Arrondissement 2 (Bolon)": ["7", "8", "9", "10", "11", "12"],
+  "Bobo-Dioulasso_Arrondissement 3 (Sarasso)": [
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18"
+  ],
+  "Bobo-Dioulasso_Arrondissement 4 (Kuinima)": [
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24"
+  ],
+  "Bobo-Dioulasso_Arrondissement 5 (Nasséré)": ["25", "26", "27"],
+  "Bobo-Dioulasso_Arrondissement 6 (Tounouma)": ["28", "29"],
+  "Bobo-Dioulasso_Arrondissement 7 (Dafra)": ["30"],
+};
+
+const Map<String, List<String>> QuartierParSecteur = {
+  // Ouagadougou
+  "Ouagadougou_1": [
+    "Koulouba",
+    "Dapoya",
+    "Zogona",
+    "Tiendpalogo",
+    "Patte d’Oie",
+    "Wemtenga",
+    "Bilbalogho",
+    "Bangr-Weoogo"
+  ],
+  "Ouagadougou_2": [
+    "Gounghin",
+    "Boulmiougou",
+    "Paspanga",
+    "Kamboinsin",
+    "Nioko 1",
+    "Nioko 2",
+    "Bassinko"
+  ],
+  "Ouagadougou_3": ["Larlé", "Tanghin", "Dassasgho", "Karpala"],
+  "Ouagadougou_4": [
+    "Pissy",
+    "Kilwin",
+    "Tampouy",
+    "Loumbila",
+    "Yamtenga",
+    "Zagtouli"
+  ],
+  "Ouagadougou_5": ["Baskuy", "Bendogo", "Cissin"],
+  "Ouagadougou_6": ["Bogodogo"],
+  "Ouagadougou_7": ["Kamboinsé", "Dassasgho Extension"],
+  "Ouagadougou_8": ["Kamsaoghin", "Pabré", "Saaba", "Saguissiran"],
+  "Ouagadougou_9": ["Tansobentenga", "Nonsin"],
+  "Ouagadougou_10": ["Secteur 10", "Zone Industrielle"],
+  "Ouagadougou_11": ["Secteur 11", "Zagtouli Sud"],
+  "Ouagadougou_12": ["Ouaga 2000"],
+  "Ouagadougou_25": ["Secteur 25", "Zone d'Activités"],
+  "Ouagadougou_26": ["Secteur 26"],
+  "Ouagadougou_27": ["Secteur 27"],
+  "Ouagadougou_28": ["Secteur 28"],
+  "Ouagadougou_29": ["Secteur 29"],
+  "Ouagadougou_30": ["Secteur 30"],
+
+  // Bobo-Dioulasso
+  "Bobo-Dioulasso_1": ["Dô Centre", "Bolmakoté", "Secteur 1"],
+  "Bobo-Dioulasso_2": ["Tounouma", "Secteur 2"],
+  "Bobo-Dioulasso_3": ["Dogona", "Secteur 3"],
+  "Bobo-Dioulasso_4": ["Farakan", "Secteur 4"],
+  "Bobo-Dioulasso_5": ["Sogécaf", "Secteur 5"],
+  "Bobo-Dioulasso_6": ["Dô Sud", "Secteur 6"],
+  "Bobo-Dioulasso_7": ["Bolon Centre", "Secteur 7"],
+  "Bobo-Dioulasso_8": ["Tiefo", "Secteur 8"],
+  "Bobo-Dioulasso_9": ["Bolon Nord", "Secteur 9"],
+  "Bobo-Dioulasso_10": ["Bolon Sud", "Secteur 10"],
+  "Bobo-Dioulasso_11": ["Bolon Extension", "Secteur 11"],
+  "Bobo-Dioulasso_12": ["Secteur 12"],
+  "Bobo-Dioulasso_13": ["Sarasso", "Secteur 13"],
+  "Bobo-Dioulasso_14": ["Kô", "Secteur 14"],
+  "Bobo-Dioulasso_15": ["Kôkô", "Secteur 15"],
+  "Bobo-Dioulasso_16": ["Sarasso Gare", "Secteur 16"],
+  "Bobo-Dioulasso_17": ["Kô Sud", "Secteur 17"],
+  "Bobo-Dioulasso_18": ["Secteur 18"],
+  "Bobo-Dioulasso_19": ["Kuinima Centre", "Secteur 19"],
+  "Bobo-Dioulasso_20": ["Dogona Extension", "Secteur 20"],
+  "Bobo-Dioulasso_21": ["Kuinima Nord", "Secteur 21"],
+  "Bobo-Dioulasso_22": ["Kuinima Sud", "Secteur 22"],
+  "Bobo-Dioulasso_23": ["Secteur 23"],
+  "Bobo-Dioulasso_24": ["Secteur 24"],
+  "Bobo-Dioulasso_25": ["Nasséré Centre", "Secteur 25"],
+  "Bobo-Dioulasso_26": ["Nasséré Nord", "Secteur 26"],
+  "Bobo-Dioulasso_27": ["Nasséré Sud", "Secteur 27"],
+  "Bobo-Dioulasso_28": ["Tounouma Extension", "Secteur 28"],
+  "Bobo-Dioulasso_29": ["Tounouma Village", "Secteur 29"],
+  "Bobo-Dioulasso_30": ["Dafra", "Secteur 30"],
+};

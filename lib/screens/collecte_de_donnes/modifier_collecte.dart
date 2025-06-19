@@ -8,54 +8,86 @@ import 'modifier_collecte_recolte.dart';
 class EditCollectePage extends StatelessWidget {
   final String collecteId;
   final String collecteType; // "récolte" ou "achat"
+
   const EditCollectePage({
     required this.collecteId,
     required this.collecteType,
     super.key,
   });
 
-  Future<Map<String, String?>> _detectAchatSubTypeAndDocIds() async {
+  Future<Map<String, dynamic>> _detectAchatSubTypeAndDocIds() async {
     final docRef =
         FirebaseFirestore.instance.collection('collectes').doc(collecteId);
 
     // On récupère le premier doc de chaque sous-collec
-    final futures = [
-      docRef.collection('SCOOP').limit(1).get(),
-      docRef.collection('Individuel').limit(1).get(),
-    ];
-    final results = await Future.wait(futures);
+    final scoopSnap = await docRef.collection('SCOOP').limit(1).get();
+    final indivSnap = await docRef.collection('Individuel').limit(1).get();
 
-    if (results[0].docs.isNotEmpty) {
-      final achatId = results[0].docs.first.id;
-      // On récupère le premier doc de SCOOP_info
+    // Gestion SCOOPS
+    if (scoopSnap.docs.isNotEmpty) {
+      final achatDoc = scoopSnap.docs.first;
       final scoopInfoSnap = await docRef
           .collection('SCOOP')
-          .doc(achatId)
+          .doc(achatDoc.id)
           .collection('SCOOP_info')
           .limit(1)
           .get();
+
       final scoopInfoId =
           scoopInfoSnap.docs.isNotEmpty ? scoopInfoSnap.docs.first.id : null;
-      return {"type": "achat_scoop", "achatId": achatId, "infoId": scoopInfoId};
+
+      // Récupérer la liste des produits (details)
+      final details = (achatDoc.data()['details'] as List?) ?? [];
+      // On retourne la liste d'index produits pour édition multiple :
+      List<int> indexProduits = [];
+      for (var i = 0; i < details.length; i++) {
+        final p = details[i];
+        if (p is Map && p['typeRuche'] != null && p['typeProduit'] != null) {
+          indexProduits.add(i);
+        }
+      }
+
+      return {
+        "type": "achat_scoop",
+        "achatDocId": achatDoc.id,
+        "infoId": scoopInfoId,
+        "details": details,
+        "indexProduits": indexProduits,
+      };
     }
-    if (results[1].docs.isNotEmpty) {
-      final achatId = results[1].docs.first.id;
-      // On récupère le premier doc de Individuel_info
+
+    // Gestion Individuel
+    if (indivSnap.docs.isNotEmpty) {
+      final achatDoc = indivSnap.docs.first;
       final indivInfoSnap = await docRef
           .collection('Individuel')
-          .doc(achatId)
+          .doc(achatDoc.id)
           .collection('Individuel_info')
           .limit(1)
           .get();
+
       final indivInfoId =
           indivInfoSnap.docs.isNotEmpty ? indivInfoSnap.docs.first.id : null;
+
+      final details = (achatDoc.data()['details'] as List?) ?? [];
+      List<int> indexProduits = [];
+      for (var i = 0; i < details.length; i++) {
+        final p = details[i];
+        if (p is Map && p['typeRuche'] != null && p['typeProduit'] != null) {
+          indexProduits.add(i);
+        }
+      }
+
       return {
         "type": "achat_individuel",
-        "achatId": achatId,
-        "infoId": indivInfoId
+        "achatDocId": achatDoc.id,
+        "infoId": indivInfoId,
+        "details": details,
+        "indexProduits": indexProduits,
       };
     }
-    return {"type": "achat_inconnu", "achatId": null, "infoId": null};
+
+    return {"type": "achat_inconnu"};
   }
 
   @override
@@ -66,7 +98,7 @@ class EditCollectePage extends StatelessWidget {
         body: EditRecolteForm(collecteId: collecteId),
       );
     } else if (collecteType == "achat") {
-      return FutureBuilder<Map<String, String?>>(
+      return FutureBuilder<Map<String, dynamic>>(
         future: _detectAchatSubTypeAndDocIds(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -82,22 +114,57 @@ class EditCollectePage extends StatelessWidget {
                         Text("Erreur lors de la détection du type d'achat.")));
           }
           final type = snapshot.data?["type"];
-          final achatId = snapshot.data?["achatId"];
-          final infoId = snapshot.data?["infoId"];
 
-          if (type == "achat_scoop" && achatId != null && infoId != null) {
+          if (type == "achat_scoop") {
+            final achatDocId = snapshot.data?["achatDocId"];
+            final infoId = snapshot.data?["infoId"];
+            final indexProduits = snapshot.data?["indexProduits"] as List<int>;
+            // Affichage multi-produits SCOOPS (un formulaire par produit)
             return Scaffold(
-                appBar: AppBar(title: Text("Modifier la collecte (SCOOPS)")),
-                body: EditAchatSCOOPForm(
-                    collecteId: collecteId, achatId: achatId, infoId: infoId));
-          } else if (type == "achat_individuel" &&
-              achatId != null &&
-              infoId != null) {
+              appBar: AppBar(title: Text("Modifier Achat (SCOOPS)")),
+              body: ListView.builder(
+                padding: EdgeInsets.all(12),
+                itemCount: indexProduits.length,
+                itemBuilder: (ctx, idx) => Card(
+                  margin: EdgeInsets.only(bottom: 16),
+                  elevation: 2,
+                  child: Padding(
+                    padding: EdgeInsets.all(8),
+                    child: EditAchatSCOOPForm(
+                      collecteId: collecteId,
+                      achatDocId: achatDocId,
+                      indexProduit: indexProduits[idx],
+                      infoId: infoId,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          } else if (type == "achat_individuel") {
+            final achatDocId = snapshot.data?["achatDocId"];
+            final infoId = snapshot.data?["infoId"];
+            final indexProduits = snapshot.data?["indexProduits"] as List<int>;
+            // Affichage multi-produits Individuel (un formulaire par produit)
             return Scaffold(
-                appBar:
-                    AppBar(title: Text("Modifier la collecte (Individuel)")),
-                body: EditAchatIndividuelForm(
-                    collecteId: collecteId, achatId: achatId, infoId: infoId));
+              appBar: AppBar(title: Text("Modifier Achat (Individuel)")),
+              body: ListView.builder(
+                padding: EdgeInsets.all(12),
+                itemCount: indexProduits.length,
+                itemBuilder: (ctx, idx) => Card(
+                  margin: EdgeInsets.only(bottom: 16),
+                  elevation: 2,
+                  child: Padding(
+                    padding: EdgeInsets.all(8),
+                    child: EditAchatIndividuelForm(
+                      collecteId: collecteId,
+                      achatDocId: achatDocId,
+                      indexProduit: indexProduits[idx],
+                      infoId: infoId,
+                    ),
+                  ),
+                ),
+              ),
+            );
           } else {
             return Scaffold(
                 appBar: AppBar(title: Text("Modifier la collecte")),

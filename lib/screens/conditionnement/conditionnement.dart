@@ -2,6 +2,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+// Prix automatiques selon la nature du miel
+const Map<String, double> prixGrosMilleFleurs = {
+  "Stick 20g": 1500,
+  "30g": 36000,
+  "250g": 950,
+  "500g": 1800,
+  "1Kg": 3400,
+  "720g": 2500,
+  "1.5Kg": 4500,
+  "7kg": 23000,
+};
+
+const Map<String, double> prixGrosMonoFleur = {
+  "250g": 1750,
+  "500g": 3000,
+  "1Kg": 5000,
+  "720g": 3500,
+  "1.5Kg": 6000,
+  "7kg": 34000,
+  "Stick 20g": 1500,
+  "30g": 36000,
+};
+
 class ConditionnementController extends GetxController {
   final dateConditionnement = Rxn<DateTime>();
   final lotOrigine = RxnString();
@@ -14,13 +37,12 @@ class ConditionnementController extends GetxController {
     "500g",
     "250g",
     "30g",
-    "Stick 20g"
+    "Stick 20g",
+    "7kg"
   ];
 
-  // Map<typeEmballage, bool> pour sélection, Map<typeEmballage, nombre>, Map<typeEmballage, prix>
   final Map<String, RxBool> emballageSelection = {};
   final Map<String, TextEditingController> nbPotsController = {};
-  final Map<String, TextEditingController> prixPotController = {};
 
   final RxInt nbTotalPots = 0.obs;
   final RxDouble prixTotal = 0.0.obs;
@@ -30,6 +52,7 @@ class ConditionnementController extends GetxController {
   // Champs issus du lot sélectionné
   final RxDouble quantiteRecue = 0.0.obs;
   final RxDouble quantiteRestante = 0.0.obs;
+  final RxString predominanceFlorale = ''.obs;
 
   // Lots filtrés
   final lotsFiltrage = <Map<String, dynamic>>[].obs;
@@ -40,9 +63,7 @@ class ConditionnementController extends GetxController {
     for (var type in typesEmballage) {
       emballageSelection[type] = false.obs;
       nbPotsController[type] = TextEditingController();
-      prixPotController[type] = TextEditingController();
       nbPotsController[type]!.addListener(_recalcule);
-      prixPotController[type]!.addListener(_recalcule);
     }
     ever(lotOrigine, (_) async {
       await majInfosLot();
@@ -64,15 +85,33 @@ class ConditionnementController extends GetxController {
     }).toList());
   }
 
-  // Met à jour la quantité reçue en fonction du lot sélectionné
+  // Met à jour la quantité reçue et la nature florale en fonction du lot sélectionné
   Future<void> majInfosLot() async {
     final lot =
         lotsFiltrage.firstWhereOrNull((e) => e['id'] == lotOrigine.value);
-    quantiteRecue.value = (lot?['quantiteFiltre'] ?? 0.0) * 1.0;
+    quantiteRecue.value =
+        (lot?['quantiteFiltre'] ?? lot?['quantiteFiltree'] ?? 0.0) * 1.0;
+    predominanceFlorale.value = (lot?['predominanceFlorale'] ?? '').toString();
     _recalcule();
   }
 
-  // Calculs automatiques
+  // Applique les prix selon la nature du lot
+  double getPrixAuto(String type) {
+    final florale = (predominanceFlorale.value ?? '').toLowerCase();
+    if (_isMonoFleur(florale)) {
+      return prixGrosMonoFleur[type] ?? prixGrosMilleFleurs[type] ?? 0.0;
+    } else {
+      return prixGrosMilleFleurs[type] ?? 0.0;
+    }
+  }
+
+  bool _isMonoFleur(String florale) {
+    if (florale.contains("mono")) return true;
+    if (florale.contains("mille") || florale.contains("mixte")) return false;
+    if (florale.contains("+") || florale.contains(",")) return false;
+    return florale.trim().isNotEmpty;
+  }
+
   void _recalcule() {
     int nbTotal = 0;
     double prixTotalAll = 0.0;
@@ -81,7 +120,7 @@ class ConditionnementController extends GetxController {
     for (var type in typesEmballage) {
       if (emballageSelection[type]?.value == true) {
         final nb = int.tryParse(nbPotsController[type]!.text) ?? 0;
-        final prix = double.tryParse(prixPotController[type]!.text) ?? 0.0;
+        final prix = getPrixAuto(type);
         nbPotsParType[type] = nb;
         prixTotalParType[type] = nb * prix;
         nbTotal += nb;
@@ -110,8 +149,7 @@ class ConditionnementController extends GetxController {
         emballages.add({
           'type': type,
           'nombre': nbPotsParType[type] ?? 0,
-          'prixUnitaire':
-              double.tryParse(prixPotController[type]?.text ?? "") ?? 0.0,
+          'prixUnitaire': getPrixAuto(type),
           'prixTotal': prixTotalParType[type] ?? 0.0,
         });
       }
@@ -119,6 +157,7 @@ class ConditionnementController extends GetxController {
     await FirebaseFirestore.instance.collection('conditionnement').add({
       'date': dateConditionnement.value,
       'lotOrigine': lotOrigine.value,
+      'predominanceFlorale': predominanceFlorale.value,
       'emballages': emballages,
       'nbTotalPots': nbTotalPots.value,
       'prixTotal': prixTotal.value,
@@ -136,7 +175,6 @@ class ConditionnementController extends GetxController {
     for (var type in typesEmballage) {
       emballageSelection[type]?.value = false;
       nbPotsController[type]?.clear();
-      prixPotController[type]?.clear();
     }
     nbTotalPots.value = 0;
     prixTotal.value = 0.0;
@@ -144,6 +182,7 @@ class ConditionnementController extends GetxController {
     quantiteRestante.value = 0.0;
     nbPotsParType.clear();
     prixTotalParType.clear();
+    predominanceFlorale.value = '';
   }
 }
 
@@ -212,6 +251,24 @@ class ConditionnementPage extends StatelessWidget {
                                         ))),
                               ],
                             ),
+                            Obx(() => c.predominanceFlorale.value.isNotEmpty
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 12.0),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.local_florist,
+                                            color: Colors.green, size: 18),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                            "Florale : ${c.predominanceFlorale.value}",
+                                            style: const TextStyle(
+                                                fontSize: 15,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.green)),
+                                      ],
+                                    ),
+                                  )
+                                : SizedBox.shrink()),
                           ],
                         ),
                       ),
@@ -228,7 +285,19 @@ class ConditionnementPage extends StatelessWidget {
                           children: [
                             ...c.typesEmballage
                                 .map((type) => Obx(() => CheckboxListTile(
-                                      title: Text(type),
+                                      title: Row(
+                                        children: [
+                                          Text(type),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            "Prix auto : ${c.getPrixAuto(type).toStringAsFixed(0)} FCFA",
+                                            style: TextStyle(
+                                                color: Colors.deepOrange,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13),
+                                          ),
+                                        ],
+                                      ),
                                       value:
                                           c.emballageSelection[type]?.value ??
                                               false,
@@ -242,43 +311,32 @@ class ConditionnementPage extends StatelessWidget {
                                       secondary: c.emballageSelection[type]
                                                   ?.value ==
                                               true
-                                          ? Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Container(
-                                                  width: 60,
-                                                  child: TextFormField(
-                                                    controller: c
-                                                        .nbPotsController[type],
-                                                    keyboardType:
-                                                        TextInputType.number,
-                                                    decoration: InputDecoration(
-                                                      labelText: "Nb",
-                                                      isDense: true,
-                                                    ),
-                                                  ),
+                                          ? Container(
+                                              width: 90,
+                                              child: TextFormField(
+                                                controller:
+                                                    c.nbPotsController[type],
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                decoration: InputDecoration(
+                                                  labelText: "Nb",
+                                                  isDense: true,
                                                 ),
-                                                SizedBox(width: 12),
-                                                Container(
-                                                  width: 80,
-                                                  child: TextFormField(
-                                                    controller:
-                                                        c.prixPotController[
-                                                            type],
-                                                    keyboardType:
-                                                        TextInputType.number,
-                                                    decoration: InputDecoration(
-                                                      labelText: "Prix pot",
-                                                      suffixText: "FCFA",
-                                                      isDense: true,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                              ),
                                             )
                                           : null,
                                     )))
                                 .toList(),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10.0),
+                              child: Text(
+                                "Les prix sont appliqués automatiquement selon la nature florale du lot.",
+                                style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.amber[900],
+                                    fontSize: 13),
+                              ),
+                            ),
                           ],
                         ),
                       ),

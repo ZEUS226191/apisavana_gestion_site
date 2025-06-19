@@ -57,21 +57,20 @@ class ConditionnementHomePage extends StatelessWidget {
                       : null;
                   final unite = data['unite'] ?? 'kg';
 
-                  final quantiteEntree =
-                      (data['quantiteEntree'] ?? 0.0).toString();
-                  final quantiteFiltree =
-                      (data['quantiteFiltree'] ?? 0.0).toString();
+                  // On utilise quantiteFiltree pour "Reçue"
                   final quantiteRecue =
-                      (data['quantiteRecu'] ?? 0.0).toString();
-                  final quantiteRestante =
-                      (data['quantiteRestante'] ?? 0.0).toString();
+                      (data['quantiteFiltree'] ?? 0.0).toString();
 
-                  // Protection : si le champ n'existe pas, le lot N'EST PAS conditionné
+                  // Reste après conditionnement (champ mis à jour après conditionnement, sinon fallback sur quantiteRestante du filtrage)
+                  final reste = (data['quantiteRestante'] ?? 0.0).toString();
+
+                  final florale =
+                      data['predominanceFlorale']?.toString() ?? '-';
+
                   final bool estConditionne =
                       data.containsKey('statutConditionnement') &&
                           data['statutConditionnement'] == 'Conditionné';
 
-                  // Si conditionné, va chercher les infos du conditionnement
                   Widget? infosConditionnement;
                   if (estConditionne) {
                     infosConditionnement = FutureBuilder<QuerySnapshot>(
@@ -106,7 +105,7 @@ class ConditionnementHomePage extends StatelessWidget {
                         final prixTotal = cond['prixTotal'] ?? '-';
                         final quantiteConditionnee =
                             cond['quantiteConditionnee'] ?? '-';
-                        final quantiteRestante =
+                        final quantiteRestanteCond =
                             cond['quantiteRestante'] ?? '-';
                         final emballages =
                             cond['emballages'] as List<dynamic>? ?? [];
@@ -142,7 +141,7 @@ class ConditionnementHomePage extends StatelessWidget {
                                   "Quantité conditionnée : $quantiteConditionnee $unite",
                                   style: const TextStyle(fontSize: 14)),
                               Text(
-                                  "Quantité restante : $quantiteRestante $unite",
+                                  "Quantité restante : $quantiteRestanteCond $unite",
                                   style: const TextStyle(
                                       fontSize: 14, color: Colors.red)),
                               Text(
@@ -250,6 +249,26 @@ class ConditionnementHomePage extends StatelessWidget {
                                               color: Colors.grey[800]),
                                         ),
                                       ),
+                                    if (florale.isNotEmpty && florale != '-')
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 3.0),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.local_florist,
+                                                color: Colors.amber[800],
+                                                size: 17),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              "Florale : $florale",
+                                              style: TextStyle(
+                                                  fontSize: isMobile ? 12 : 14,
+                                                  color: Colors.green[900],
+                                                  fontStyle: FontStyle.italic),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -261,25 +280,13 @@ class ConditionnementHomePage extends StatelessWidget {
                             runSpacing: 3,
                             children: [
                               Chip(
-                                label: Text("Entrée : $quantiteEntree $unite",
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w500)),
-                                backgroundColor: Colors.amber[50],
-                              ),
-                              Chip(
-                                label: Text("Filtré : $quantiteFiltree $unite",
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w500)),
-                                backgroundColor: Colors.blue[50],
-                              ),
-                              Chip(
                                 label: Text("Reçue : $quantiteRecue $unite",
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w500)),
                                 backgroundColor: Colors.teal[50],
                               ),
                               Chip(
-                                label: Text("Reste : $quantiteRestante $unite",
+                                label: Text("Reste : $reste $unite",
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w500,
                                         color: Colors.red)),

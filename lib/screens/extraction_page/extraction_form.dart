@@ -21,11 +21,10 @@ class _ExtractionFormPageState extends State<ExtractionFormPage> {
   double? quantiteFiltree;
 
   // Pour gérer l'extraction en partie
-  late double quantiteInitiale; // Quantité totale initiale
-  late double quantiteRestante; // Quantité restante à extraire (si partiel)
+  late double quantiteInitiale;
+  late double quantiteRestante;
   String? statutExtractionPrecedent;
-  double? quantiteEntreeCumul =
-      0; // Cumul pour le résumé (si plusieurs extractions)
+  double? quantiteEntreeCumul = 0;
   double? quantiteFiltreeCumul = 0;
   double? dechetsCumul = 0;
 
@@ -43,13 +42,11 @@ class _ExtractionFormPageState extends State<ExtractionFormPage> {
     lot = widget.collecte['numeroLot']?.toString() ?? '';
     quantiteInitiale =
         double.tryParse(widget.collecte['quantite']?.toString() ?? "0") ?? 0;
-    // On récupère l’état d’extraction si existant
     quantiteRestante = widget.collecte['quantiteRestante'] != null
         ? double.tryParse(widget.collecte['quantiteRestante'].toString()) ??
             quantiteInitiale
         : quantiteInitiale;
     statutExtractionPrecedent = widget.collecte['statutExtraction'];
-    // Cumul des extractions précédentes (affichage)
     quantiteEntreeCumul =
         double.tryParse(widget.collecte['quantiteEntree']?.toString() ?? "") ??
             0;
@@ -62,8 +59,21 @@ class _ExtractionFormPageState extends State<ExtractionFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Quantité maximale autorisée pour cette extraction
     final quantiteMaxPourExtraire = quantiteRestante;
+
+    // -- GESTION LOCALITÉ POUR AFFICHAGE --
+    final commune = widget.collecte['commune']?.toString();
+    final quartier = widget.collecte['quartier']?.toString();
+    final village = widget.collecte['village']?.toString();
+    String localiteAffichage;
+    if (commune != null &&
+        commune.isNotEmpty &&
+        quartier != null &&
+        quartier.isNotEmpty) {
+      localiteAffichage = "$commune | $quartier";
+    } else {
+      localiteAffichage = village ?? "-";
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -141,8 +151,7 @@ class _ExtractionFormPageState extends State<ExtractionFormPage> {
               _infoRow(Icons.spa, "Florale",
                   formatFlorale(widget.collecte['predominanceFlorale'])),
               SizedBox(height: 5),
-              _infoRow(
-                  Icons.villa, "Village", widget.collecte['village'] ?? "-"),
+              _infoRow(Icons.villa, "Localité", localiteAffichage),
               SizedBox(height: 16),
               _label("Date d'extraction", icon: Icons.event),
               InkWell(
@@ -353,19 +362,28 @@ class _ExtractionFormPageState extends State<ExtractionFormPage> {
                       double newCumulDechets = dechetsCumul! + (dechets ?? 0);
 
                       // Enregistrement extraction Firestore
-                      // ...dans le onPressed du bouton de validation extraction...
                       final now = DateTime.now();
                       final expiration = now.add(Duration(hours: 48));
 
-// Cherche s'il existe déjà une extraction pour cette collecte
+                      // Cherche s'il existe déjà une extraction pour cette collecte
                       final extractionRef = await FirebaseFirestore.instance
                           .collection('extraction')
                           .where('collecteId', isEqualTo: widget.collecte['id'])
+                          .where('recId', isEqualTo: widget.collecte['recId'])
+                          .where('achatId',
+                              isEqualTo: widget.collecte['achatId'])
+                          .where('detailIndex',
+                              isEqualTo: widget.collecte['detailIndex'])
                           .limit(1)
                           .get();
 
                       final extractionData = {
                         "collecteId": widget.collecte['id'] ?? '',
+                        // Ajoute ceci :
+                        "recId": widget.collecte['recId'],
+                        "achatId": widget.collecte['achatId'],
+                        "detailIndex": widget.collecte['detailIndex'],
+                        // ...
                         "producteurNom": widget.collecte['producteurNom'] ?? '',
                         "lot": lot,
                         "dateExtraction": now,

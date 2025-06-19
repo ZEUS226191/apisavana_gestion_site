@@ -4,13 +4,15 @@ import 'package:get/get.dart';
 
 class EditAchatSCOOPForm extends StatefulWidget {
   final String collecteId;
-  final String achatId;
+  final String
+      achatDocId; // id du doc unique dans la sous-co SCOOP (celui qui contient "details")
+  final int indexProduit; // index du produit dans le tableau details
   final String infoId;
 
-  // On attend maintenant aussi achatId et infoId
   const EditAchatSCOOPForm({
     required this.collecteId,
-    required this.achatId,
+    required this.achatDocId,
+    required this.indexProduit,
     required this.infoId,
     super.key,
   });
@@ -22,28 +24,28 @@ class EditAchatSCOOPForm extends StatefulWidget {
 class _EditAchatSCOOPFormState extends State<EditAchatSCOOPForm> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers pour focus et édition fluide
-  final _quantiteAccepteeCtrl = TextEditingController();
-  final _quantiteRejeteeCtrl = TextEditingController();
-  final _prixUnitaireCtrl = TextEditingController();
-
-  String? _nomSCOOPS;
   String? _typeRuche;
   String? _typeProduit;
   String? _unite;
-  DateTime? _dateAchat;
-
   double? _quantiteAcceptee;
   double? _quantiteRejetee;
   double? _prixUnitaire;
   double? _prixTotal;
+  DateTime? _dateAchat;
 
+  String? _nomSCOOPS;
   List<String> scoopsConnues = [];
+
   final List<String> typesRuche = ['Traditionnelle', 'Moderne'];
   final List<String> typesProduit = ['Miel brut', 'Miel filtré', 'Cire'];
   final List<String> unites = ['kg', 'litre'];
 
+  final TextEditingController _quantiteAccepteeCtrl = TextEditingController();
+  final TextEditingController _quantiteRejeteeCtrl = TextEditingController();
+  final TextEditingController _prixUnitaireCtrl = TextEditingController();
+
   bool _loading = true;
+  List<dynamic> _details = [];
 
   @override
   void initState() {
@@ -70,39 +72,40 @@ class _EditAchatSCOOPFormState extends State<EditAchatSCOOPForm> {
   }
 
   Future<void> _fetchData() async {
-    // 1. Récupérer l'achat dans la sous-collec SCOOP
     final achatDoc = await FirebaseFirestore.instance
         .collection('collectes')
         .doc(widget.collecteId)
         .collection('SCOOP')
-        .doc(widget.achatId)
+        .doc(widget.achatDocId)
         .get();
     final achatData = achatDoc.data();
+    _details = (achatData?['details'] as List?) ?? [];
 
-    // 2. Récupérer l'info de la SCOOPS associée
     final infoDoc = await FirebaseFirestore.instance
         .collection('collectes')
         .doc(widget.collecteId)
         .collection('SCOOP')
-        .doc(widget.achatId)
+        .doc(widget.achatDocId)
         .collection('SCOOP_info')
         .doc(widget.infoId)
         .get();
     final infoData = infoDoc.data();
 
-    if (achatData != null && infoData != null) {
+    if (_details.length > widget.indexProduit) {
+      final prod = Map<String, dynamic>.from(_details[widget.indexProduit]);
       setState(() {
-        _typeRuche = achatData['typeRuche'];
-        _typeProduit = achatData['typeProduit'];
-        _quantiteAcceptee = (achatData['quantite'] as num?)?.toDouble();
-        _quantiteRejetee = (achatData['quantiteRejetee'] as num?)?.toDouble();
-        _unite = achatData['unite'];
-        _prixUnitaire = (achatData['prixUnitaire'] as num?)?.toDouble();
-        _prixTotal = (achatData['prixTotal'] as num?)?.toDouble();
-        _dateAchat = (achatData['dateAchat'] as Timestamp?)?.toDate();
+        _typeRuche = prod['typeRuche'] as String?;
+        _typeProduit = prod['typeProduit'] as String?;
+        _quantiteAcceptee = (prod['quantiteAcceptee'] as num?)?.toDouble();
+        _quantiteRejetee = (prod['quantiteRejetee'] as num?)?.toDouble();
+        _unite = prod['unite'] as String?;
+        _prixUnitaire = (prod['prixUnitaire'] as num?)?.toDouble();
+        _prixTotal = (prod['prixTotal'] as num?)?.toDouble();
+        _dateAchat = achatData?['dateAchat'] is Timestamp
+            ? (achatData?['dateAchat'] as Timestamp).toDate()
+            : null;
 
-        _nomSCOOPS = infoData['nom'];
-
+        _nomSCOOPS = infoData?['nom'];
         _quantiteAccepteeCtrl.text = _quantiteAcceptee?.toString() ?? '';
         _quantiteRejeteeCtrl.text = _quantiteRejetee?.toString() ?? '';
         _prixUnitaireCtrl.text = _prixUnitaire?.toString() ?? '';
@@ -130,48 +133,38 @@ class _EditAchatSCOOPFormState extends State<EditAchatSCOOPForm> {
     });
   }
 
-  void _resetForm() {
-    setState(() {
-      _nomSCOOPS = null;
-      _typeRuche = null;
-      _typeProduit = null;
-      _quantiteAcceptee = null;
-      _quantiteRejetee = null;
-      _unite = null;
-      _prixUnitaire = null;
-      _prixTotal = null;
-      _dateAchat = null;
-      _quantiteAccepteeCtrl.clear();
-      _quantiteRejeteeCtrl.clear();
-      _prixUnitaireCtrl.clear();
-    });
-  }
-
   Future<void> _updateData() async {
     try {
-      // 1. Mettre à jour les infos d'achat
+      List<dynamic> updatedDetails = List.from(_details);
+      if (updatedDetails.length <= widget.indexProduit)
+        throw Exception("Index produit invalide");
+      Map<String, dynamic> prod =
+          Map<String, dynamic>.from(updatedDetails[widget.indexProduit]);
+      prod['typeRuche'] = _typeRuche;
+      prod['typeProduit'] = _typeProduit;
+      prod['quantiteAcceptee'] = _quantiteAcceptee;
+      prod['quantiteRejetee'] = _quantiteRejetee;
+      prod['unite'] = _unite;
+      prod['prixUnitaire'] = _prixUnitaire;
+      prod['prixTotal'] = _prixTotal;
+
+      updatedDetails[widget.indexProduit] = prod;
+
       await FirebaseFirestore.instance
           .collection('collectes')
           .doc(widget.collecteId)
           .collection('SCOOP')
-          .doc(widget.achatId)
+          .doc(widget.achatDocId)
           .update({
-        'typeRuche': _typeRuche,
-        'typeProduit': _typeProduit,
-        'quantite': _quantiteAcceptee,
-        'quantiteRejetee': _quantiteRejetee,
-        'unite': _unite,
-        'prixUnitaire': _prixUnitaire,
-        'prixTotal': _prixTotal,
+        'details': updatedDetails,
         'dateAchat': _dateAchat,
       });
 
-      // 2. Mettre à jour les infos de la SCOOPS associée
       await FirebaseFirestore.instance
           .collection('collectes')
           .doc(widget.collecteId)
           .collection('SCOOP')
-          .doc(widget.achatId)
+          .doc(widget.achatDocId)
           .collection('SCOOP_info')
           .doc(widget.infoId)
           .update({
@@ -185,8 +178,7 @@ class _EditAchatSCOOPFormState extends State<EditAchatSCOOPForm> {
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );
-      _resetForm();
-      Get.back();
+      Navigator.of(context).pop();
     } catch (e) {
       Get.snackbar(
         "Erreur",
@@ -210,127 +202,135 @@ class _EditAchatSCOOPFormState extends State<EditAchatSCOOPForm> {
         _dateAchat != null;
   }
 
+  // Dans EditAchatSCOOPForm (et EditAchatIndividuelForm), modifie le build :
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return Center(child: CircularProgressIndicator());
     }
-    return Padding(
-      padding: EdgeInsets.all(20),
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            DropdownButtonFormField<String>(
-              value: _nomSCOOPS,
-              decoration: InputDecoration(labelText: "SCOOPS"),
-              items: scoopsConnues
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) => setState(() => _nomSCOOPS = v),
-              validator: (v) => v == null ? "Sélectionner une SCOOPS" : null,
+    // Ajoute un Scaffold ici
+    return Scaffold(
+      appBar: AppBar(title: Text("Modifier le produit")), // optionnel
+      body: Padding(
+          padding: EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: _nomSCOOPS,
+                  decoration: InputDecoration(labelText: "SCOOPS"),
+                  items: scoopsConnues
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _nomSCOOPS = v),
+                  validator: (v) =>
+                      v == null ? "Sélectionner une SCOOPS" : null,
+                ),
+                DropdownButtonFormField<String>(
+                  value: _typeRuche,
+                  decoration: InputDecoration(labelText: "Type de ruche"),
+                  items: typesRuche
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _typeRuche = v),
+                  validator: (v) =>
+                      v == null ? "Sélectionner le type de ruche" : null,
+                ),
+                DropdownButtonFormField<String>(
+                  value: _typeProduit,
+                  decoration: InputDecoration(labelText: "Type de produit"),
+                  items: typesProduit
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _typeProduit = v),
+                  validator: (v) =>
+                      v == null ? "Sélectionner le type de produit" : null,
+                ),
+                TextFormField(
+                  controller: _quantiteAccepteeCtrl,
+                  decoration: InputDecoration(labelText: "Quantité acceptée"),
+                  keyboardType: TextInputType.number,
+                  validator: (v) =>
+                      v == null || v.isEmpty || double.tryParse(v) == null
+                          ? "Obligatoire"
+                          : null,
+                ),
+                TextFormField(
+                  controller: _quantiteRejeteeCtrl,
+                  decoration: InputDecoration(labelText: "Quantité rejetée"),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) =>
+                      setState(() => _quantiteRejetee = double.tryParse(v)),
+                  validator: (v) =>
+                      v == null || v.isEmpty || double.tryParse(v) == null
+                          ? "Obligatoire"
+                          : null,
+                ),
+                DropdownButtonFormField<String>(
+                  value: _unite,
+                  decoration: InputDecoration(labelText: "Unité"),
+                  items: unites
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _unite = v),
+                  validator: (v) => v == null ? "Sélectionner l'unité" : null,
+                ),
+                TextFormField(
+                  controller: _prixUnitaireCtrl,
+                  decoration: InputDecoration(labelText: "Prix unitaire"),
+                  keyboardType: TextInputType.number,
+                  validator: (v) =>
+                      v == null || v.isEmpty || double.tryParse(v) == null
+                          ? "Obligatoire"
+                          : null,
+                ),
+                TextFormField(
+                  enabled: false,
+                  decoration: InputDecoration(labelText: "Prix total"),
+                  style: TextStyle(
+                      color: Colors.blueGrey[600], fontWeight: FontWeight.bold),
+                  controller: TextEditingController(
+                    text: _prixTotal != null
+                        ? _prixTotal!.toStringAsFixed(2)
+                        : "",
+                  ),
+                ),
+                ListTile(
+                  title: Text(_dateAchat != null
+                      ? "Date d'achat: ${_dateAchat!.day}/${_dateAchat!.month}/${_dateAchat!.year}"
+                      : "Date d'achat"),
+                  trailing: Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _dateAchat ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) setState(() => _dateAchat = picked);
+                  },
+                ),
+                SizedBox(height: 20),
+                ElevatedButton.icon(
+                    icon: Icon(Icons.save),
+                    label: Text("Enregistrer les modifications"),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber[700]),
+                    onPressed: () {
+                      if ((_formKey.currentState?.validate() ?? false) &&
+                          _allFieldsFilled()) {
+                        _updateData();
+                      } else {
+                        Get.snackbar(
+                            "Erreur", "Veuillez remplir tous les champs !");
+                      }
+                    }),
+              ],
             ),
-            DropdownButtonFormField<String>(
-              value: _typeRuche,
-              decoration: InputDecoration(labelText: "Type de ruche"),
-              items: typesRuche
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                  .toList(),
-              onChanged: (v) => setState(() => _typeRuche = v),
-              validator: (v) =>
-                  v == null ? "Sélectionner le type de ruche" : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: _typeProduit,
-              decoration: InputDecoration(labelText: "Type de produit"),
-              items: typesProduit
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                  .toList(),
-              onChanged: (v) => setState(() => _typeProduit = v),
-              validator: (v) =>
-                  v == null ? "Sélectionner le type de produit" : null,
-            ),
-            TextFormField(
-              controller: _quantiteAccepteeCtrl,
-              decoration: InputDecoration(labelText: "Quantité acceptée"),
-              keyboardType: TextInputType.number,
-              validator: (v) =>
-                  v == null || v.isEmpty || double.tryParse(v) == null
-                      ? "Obligatoire"
-                      : null,
-            ),
-            TextFormField(
-              controller: _quantiteRejeteeCtrl,
-              decoration: InputDecoration(labelText: "Quantité rejetée"),
-              keyboardType: TextInputType.number,
-              onChanged: (v) =>
-                  setState(() => _quantiteRejetee = double.tryParse(v)),
-              validator: (v) =>
-                  v == null || v.isEmpty || double.tryParse(v) == null
-                      ? "Obligatoire"
-                      : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: _unite,
-              decoration: InputDecoration(labelText: "Unité"),
-              items: unites
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                  .toList(),
-              onChanged: (v) => setState(() => _unite = v),
-              validator: (v) => v == null ? "Sélectionner l'unité" : null,
-            ),
-            TextFormField(
-              controller: _prixUnitaireCtrl,
-              decoration: InputDecoration(labelText: "Prix unitaire"),
-              keyboardType: TextInputType.number,
-              validator: (v) =>
-                  v == null || v.isEmpty || double.tryParse(v) == null
-                      ? "Obligatoire"
-                      : null,
-            ),
-            TextFormField(
-              enabled: false,
-              decoration: InputDecoration(labelText: "Prix total"),
-              style: TextStyle(
-                  color: Colors.blueGrey[600], fontWeight: FontWeight.bold),
-              controller: TextEditingController(
-                text: _prixTotal != null ? _prixTotal!.toStringAsFixed(2) : "",
-              ),
-            ),
-            ListTile(
-              title: Text(_dateAchat != null
-                  ? "Date d'achat: ${_dateAchat!.day}/${_dateAchat!.month}/${_dateAchat!.year}"
-                  : "Date d'achat"),
-              trailing: Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _dateAchat ?? DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (picked != null) setState(() => _dateAchat = picked);
-              },
-            ),
-            SizedBox(height: 20),
-            ElevatedButton.icon(
-                icon: Icon(Icons.save),
-                label: Text("Enregistrer les modifications"),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber[700]),
-                onPressed: () {
-                  if ((_formKey.currentState?.validate() ?? false) &&
-                      _allFieldsFilled()) {
-                    _updateData();
-                  } else {
-                    Get.snackbar(
-                        "Erreur", "Veuillez remplir tous les champs !");
-                  }
-                }),
-          ],
-        ),
-      ),
+          )),
     );
   }
 }

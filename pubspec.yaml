@@ -46,6 +46,9 @@ dependencies:
   dropdown_search: ^5.0.6
   multi_select_flutter: ^4.1.1
   flutter_multi_select_items:
+  url_launcher:
+  intl:
+  excel:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -79,6 +82,7 @@ flutter:
   assets:
     - assets/logo/
     - assets/images/
+    - assets/fonts/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

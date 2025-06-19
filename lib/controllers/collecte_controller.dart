@@ -34,173 +34,6 @@ class CollecteController extends GetxController {
   // --- Techniciens (recolteurs) & leur organisation ---
   // --- LISTE DÉFINITIVE DES TECHNICIENS & GÉOGRAPHIE ---
   // Liste plate des techniciens
-  final List<String> recolteurs = [
-    'SEMDE Souleymane',
-    'TRAORE Abdoul Aziz',
-    'DIALLO Amidou',
-    'SIRIMA Salia',
-    'ZONGO Martial',
-    'KANCO Epicma',
-    'ZOUNGRANA Hypolite',
-  ];
-
-  // Map Technicien -> Région(s)
-  final Map<String, List<String>> regionsParRecolteur = {
-    'SEMDE Souleymane': ['Hauts-Bassins', 'Cascades'],
-    'TRAORE Abdoul Aziz': ['Cascades'],
-    'DIALLO Amidou': ['Cascades'],
-    'SIRIMA Salia': ['Cascades', 'Sud-Ouest'],
-    'ZONGO Martial': ['Hauts-Bassins'],
-    'KANCO Epicma': ['Centre-Ouest', 'Centre-Sud'],
-    'ZOUNGRANA Hypolite': ['Centre-Ouest'],
-  };
-
-  // Map Technicien + Région -> Provinces
-  final Map<String, Map<String, List<String>>> provincesParRecolteurEtRegion = {
-    'SEMDE Souleymane': {
-      'Hauts-Bassins': ['Tuy'],
-      'Cascades': ['Léraba'],
-    },
-    'TRAORE Abdoul Aziz': {
-      'Cascades': ['Léraba', 'Comoé'],
-    },
-    'DIALLO Amidou': {
-      'Cascades': ['Léraba', 'Comoé'],
-    },
-    'SIRIMA Salia': {
-      'Cascades': ['Comoé'],
-      'Sud-Ouest': ['Poni'],
-    },
-    'ZONGO Martial': {
-      'Hauts-Bassins': ['Houet', 'Tuy'],
-    },
-    'KANCO Epicma': {
-      'Centre-Ouest': ['Sanguié'],
-      'Centre-Sud': ['Nahouri'],
-    },
-    'ZOUNGRANA Hypolite': {
-      'Centre-Ouest': ['Sanguié'],
-    },
-  };
-
-  // Map Technicien + Région + Province -> Villages
-  final Map<String, Map<String, Map<String, List<String>>>>
-      villagesParRecolteurEtRegionEtProvince = {
-    'SEMDE Souleymane': {
-      'Hauts-Bassins': {
-        'Tuy': [
-          'Mahon (Commune de Kangata)',
-          'Silarasso (Commune de Koloko)',
-          'Bebougou (Commune de Ouéléni)',
-        ]
-      },
-      'Cascades': {
-        'Léraba': [
-          'Kokouna (Commune de Koloko)',
-        ]
-      },
-    },
-    'TRAORE Abdoul Aziz': {
-      'Cascades': {
-        'Léraba': [
-          'Dionso (Commune de Kankalaba)',
-          'Kolasso (Commune de Kankalaba)',
-          'Niantonon (Commune de Kankalaba)',
-        ],
-        'Comoé': [
-          'Nalerie (Commune de Ouéléni)',
-          'Tinou (Commune de Ouéléni)',
-          'Tena (Commune de Ouéléni)',
-          'Namboena (Commune de Ouéléni)',
-          'Kankalaba (Commune de Kankalaba)',
-        ],
-      },
-    },
-    'DIALLO Amidou': {
-      'Cascades': {
-        'Léraba': [
-          'Douna (Commune de Douna)',
-          'Bougoula (Commune de Kankalaba)',
-        ],
-        'Comoé': [
-          'Kangoura (Commune de Lounana)',
-          'Baguera (Commune de Lounana)',
-          'Soumadougoudjan (Commune de Lounana)',
-          'Dakoro (Commune de Dakoro)',
-          'Monsonon (Commune de Sindou)',
-        ],
-      },
-    },
-    'SIRIMA Salia': {
-      'Cascades': {
-        'Comoé': [
-          'Tourni (Commune de Sindou)',
-          'Toussiamasso (Localité non précisée)',
-          'Kourinion (Localité non précisée)',
-          'Sipigui (Localité non précisée)',
-        ],
-      },
-      'Sud-Ouest': {
-        'Poni': [
-          'Guena (Localité non précisée)',
-          'Sidi (Localité non précisée)',
-          'Moussodougou (Commune de Moussodougou)',
-        ]
-      },
-    },
-    'ZONGO Martial': {
-      'Hauts-Bassins': {
-        'Houet': [
-          'Nounousso (Commune de Bobo-Dioulasso)',
-          'Dafinaso (Commune de Bobo-Dioulasso)',
-          'Doulfguisso (Commune de Bobo-Dioulasso)',
-        ],
-        'Tuy': [
-          'Dereguan (Commune de Karangasso-Vigué)',
-          'Gnafongo (Commune de Peni)',
-          'Ouére (Commune de Dan)',
-          'Satiri (Commune de Satiri)',
-          'Sala (Commune de Satiri)',
-          'Toussiana (Commune de Toussiana)',
-        ],
-      }
-    },
-    'KANCO Epicma': {
-      'Centre-Ouest': {
-        'Sanguié': [
-          'Réo (Commune de Réo)',
-          'Dassa (Localité non précisée)',
-          'Didyr (Localité non précisée)',
-          'Godyr (Localité non précisée)',
-          'Kyon (Localité non précisée)',
-          'Ténado (Localité non précisée)',
-        ]
-      },
-      'Centre-Sud': {
-        'Nahouri': ['Pô (Commune de Pô)']
-      }
-    },
-    'ZOUNGRANA Hypolite': {
-      'Centre-Ouest': {
-        'Sanguié': ['Réo (Commune de Réo)']
-      }
-    }
-  };
-
-  List<String> getRegionsForTechnicien(String? technicien) =>
-      technicien == null ? [] : regionsParRecolteur[technicien] ?? [];
-  List<String> getProvincesForTechnicienRegion(
-          String? technicien, String? region) =>
-      (technicien == null || region == null)
-          ? []
-          : provincesParRecolteurEtRegion[technicien]?[region] ?? [];
-  List<String> getVillagesForAll(
-          String? technicien, String? region, String? province) =>
-      (technicien == null || region == null || province == null)
-          ? []
-          : villagesParRecolteurEtRegionEtProvince[technicien]?[region]
-                  ?[province] ??
-              [];
 
   final RxList<String> scoopsConnues = <String>[].obs;
   final RxList<String> individuelsConnus = <String>[].obs;
@@ -217,13 +50,22 @@ class CollecteController extends GetxController {
   final commune = RxnString();
   final village = RxnString(); // tu complèteras plus tard
   final List<String> techniciens = [
-    'SEMDE Souleymane',
-    'TRAORE Abdoul Aziz',
-    'DIALLO Amidou',
-    'SIRIMA Salia',
-    'ZONGO Martial',
-    'KANCO Epicma',
-    'ZOUNGRANA Hypolite',
+    "ZOUNGRANA	Valentin",
+    "ROAMBA	F Y Ferdinand",
+    "YAMEOGO	A Clément",
+    "SANOU	Sitelé",
+    "YAMEOGO	Justin",
+    "Sanogo	Issouf",
+    "OUATTARA	Baladji",
+    "OUTTARA	Lassina",
+    "YAMEOGO	Innocent",
+    "OUEDRAOGO 	Issouf",
+    "YAMEOGO	Hippolyte",
+    "TRAORE	Abdoul Aziz",
+    "SIEMDE	Souleymane",
+    "KABORE	Adama",
+    "OUEDRAOGO	Adama",
+    "Milogo	Anicet",
   ];
 
   List<String> getProvincesForRegion(String? region) =>
@@ -512,6 +354,20 @@ class CollecteController extends GetxController {
   final provinceScoopsAjout = RxnString();
   final communeScoopsAjout = RxnString();
   final villageScoopsAjout = RxnString();
+  final secteur = RxnString();
+  final quartier = RxnString();
+  final arrondissement = RxnString();
+
+  // Pour formulaire Individuel
+  final arrondissementIndivAjout = RxnString();
+  final secteurIndivAjout = RxnString();
+  final quartierIndivAjout = RxnString();
+
+  // Pour formulaire SCOOPS
+
+  final arrondissementScoopsAjout = RxnString();
+  final secteurScoopsAjout = RxnString();
+  final quartierScoopsAjout = RxnString();
 
   // --- ACHAT > SCOOPS : Sélection multiple de types de ruche/produit et gestion dynamique
   final RxList<String> typesRucheAchatScoopsMulti =
@@ -659,58 +515,6 @@ class CollecteController extends GetxController {
         nbRuchesModIndivAjout.text.isNotEmpty;
   }
 
-  // ENREGISTREMENT DANS FIRESTORE
-  Future<void> enregistrerCollecteRecolte() async {
-    // Nouvelle validation adaptée à la nouvelle structure
-    if (dateCollecte.value == null ||
-        nomRecolteur.value == null ||
-        region.value == null ||
-        province.value == null ||
-        commune.value == null ||
-        (village.value == null ||
-            village.value!.isEmpty) || // autorise saisie manuelle
-        quantiteRecolte.value == null ||
-        nbRuchesRecoltees.value == null ||
-        predominancesFloralesSelected.isEmpty) {
-      Get.snackbar("Erreur", "Veuillez remplir tous les champs !");
-      return;
-    }
-
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      Get.snackbar("Erreur", "Utilisateur non connecté !");
-      return;
-    }
-
-    // Créer un document dans /collectes/
-    final collecteRef =
-        await FirebaseFirestore.instance.collection('collectes').add({
-      'type': 'récolte',
-      'dateCollecte': dateCollecte.value ?? DateTime.now(),
-      'utilisateurId': user.uid,
-      'utilisateurNom': user.displayName ?? user.email ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    // Ajouter la sous-collection Récolte
-    await collecteRef.collection('Récolte').add({
-      'nomRecolteur': nomRecolteur.value,
-      'region': region.value,
-      'province': province.value,
-      'commune': commune.value,
-      'village': village.value,
-      'quantiteKg': quantiteRecolte.value,
-      'nbRuchesRecoltees': nbRuchesRecoltees.value,
-      'predominanceFlorale': predominancesFloralesSelected.toList(),
-      'dateRecolte': dateCollecte.value,
-      "typeProduit": "Miel brute"
-    });
-
-    Get.snackbar("Succès", "Collecte (Récolte) enregistrée !");
-    reset();
-    Get.back();
-  }
-
   void initAchatProduitForm({required String ruche, required String produit}) {
     if (achatsParRucheProduit[ruche] == null) {
       achatsParRucheProduit[ruche] = <String, AchatProduitData>{}.obs;
@@ -719,6 +523,35 @@ class CollecteController extends GetxController {
       achatsParRucheProduit[ruche]![produit] =
           AchatProduitData(); // Adapte le constructeur selon ton modèle
     }
+  }
+
+  List<String> champsManquantsScoops() {
+    final List<String> manquants = [];
+    if (nomScoopsAjout.text.isEmpty) manquants.add("Nom SCOOPS");
+    if (nomPresidentAjout.text.isEmpty) manquants.add("Nom Président");
+    if (numeroPresidentCtrl.text.isEmpty) manquants.add("Numéro Président");
+    if (regionScoopsAjout.value == null) manquants.add("Région");
+    if (provinceScoopsAjout.value == null) manquants.add("Province");
+    if (communeScoopsAjout.value == null) manquants.add("Commune");
+    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+        .contains(communeScoopsAjout.value)) {
+      if (arrondissementScoopsAjout.value == null)
+        manquants.add("Arrondissement");
+      if (secteurScoopsAjout.value == null) manquants.add("Secteur");
+      if (quartierScoopsAjout.value == null) manquants.add("Quartier");
+    } else {
+      if (villageScoopsAjout.value == null || villageScoopsAjout.value!.isEmpty)
+        manquants.add("Village");
+    }
+    if (nbRuchesTradScoopsAjout.text.isEmpty)
+      manquants.add("Nb ruches traditionnelles");
+    if (nbRuchesModScoopsAjout.text.isEmpty)
+      manquants.add("Nb ruches modernes");
+    if (nbMembreScoopsAjout.text.isEmpty) manquants.add("Nb membres");
+    if (nbHommeScoopsAjout.text.isEmpty) manquants.add("Nb hommes");
+    if (nbJeuneScoopsAjout.text.isEmpty) manquants.add("Nb jeunes");
+    if (predominancesFloralesSelected.isEmpty) manquants.add("Florale");
+    return manquants;
   }
 
   /// Enregistre une nouvelle SCOOPS dans la collection SCOOPS
@@ -745,7 +578,6 @@ class CollecteController extends GetxController {
       'region': regionScoopsAjout.value,
       'province': provinceScoopsAjout.value,
       'commune': communeScoopsAjout.value,
-      'village': villageScoopsAjout.value,
       'predominanceFlorale': predominancesFloralesSelected.toList(),
       'nbRuchesTrad': int.parse(nbRuchesTradScoopsAjout.text),
       'nbRuchesMod': int.parse(nbRuchesModScoopsAjout.text),
@@ -757,6 +589,17 @@ class CollecteController extends GetxController {
       'recipise': recipiseFile.value ?? "",
       'createdAt': FieldValue.serverTimestamp(),
     };
+
+    // Champs géographiques dynamiques
+    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+        .contains(communeScoopsAjout.value)) {
+      scoopsData['arrondissement'] = arrondissementScoopsAjout.value;
+      scoopsData['secteur'] = secteurScoopsAjout.value;
+      scoopsData['quartier'] = quartierScoopsAjout.value;
+    } else {
+      scoopsData['village'] = villageScoopsAjout.value;
+    }
+
     final ref =
         await FirebaseFirestore.instance.collection('SCOOPS').add(scoopsData);
     Get.snackbar("Succès", "SCOOPS ajoutée !");
@@ -770,12 +613,17 @@ class CollecteController extends GetxController {
     final indivData = {
       'nomPrenom': nomPrenomIndivAjout.text,
       "numeroIndividuel": numeroIndividuelCtrl.text,
-      // Localisation complète
       'region': regionIndivAjout.value,
       'province': provinceIndivAjout.value,
       'commune': communeIndivAjout.value,
-      'village': villageIndivAjout.value,
-      // Autres infos
+      // Dynamique pour Ouaga/Bobo ou Village classique
+      if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+          .contains(communeIndivAjout.value)) ...{
+        'arrondissement': arrondissementIndivAjout.value,
+        'secteur': secteurIndivAjout.value,
+        'quartier': quartierIndivAjout.value,
+      } else
+        'village': villageIndivAjout.value,
       'sexe': sexeIndivAjout.value,
       'age': ageIndivAjout.value,
       'cooperative': cooperativeIndivAjout.value,
@@ -793,6 +641,74 @@ class CollecteController extends GetxController {
     return ref;
   }
 
+  // ENREGISTREMENT DANS FIRESTORE
+  Future<void> enregistrerCollecteRecolte() async {
+    if (dateCollecte.value == null ||
+        nomRecolteur.value == null ||
+        region.value == null ||
+        province.value == null ||
+        commune.value == null ||
+        quantiteRecolte.value == null ||
+        nbRuchesRecoltees.value == null ||
+        predominancesFloralesSelected.isEmpty ||
+        // Pour Ouaga/Bobo : tout doit être rempli jusqu'à quartier
+        ((commune.value == "Ouagadougou" ||
+                commune.value == "BOBO-DIOULASSO" ||
+                commune.value == "Bobo-Dioulasso") &&
+            (arrondissement.value == null ||
+                secteur.value == null ||
+                quartier.value == null)) ||
+        // Autres cas : village doit être renseigné
+        (!["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+                .contains(commune.value) &&
+            (village.value == null || village.value!.isEmpty))) {
+      Get.snackbar("Erreur", "Veuillez remplir tous les champs !");
+      return;
+    }
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      Get.snackbar("Erreur", "Utilisateur non connecté !");
+      return;
+    }
+
+    final collecteRef =
+        await FirebaseFirestore.instance.collection('collectes').add({
+      'type': 'récolte',
+      'dateCollecte': dateCollecte.value ?? DateTime.now(),
+      'utilisateurId': user.uid,
+      'utilisateurNom': user.displayName ?? user.email ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    final Map<String, dynamic> sousDocData = {
+      'nomRecolteur': nomRecolteur.value,
+      'region': region.value,
+      'province': province.value,
+      'commune': commune.value,
+      'quantiteKg': quantiteRecolte.value,
+      'nbRuchesRecoltees': nbRuchesRecoltees.value,
+      'predominanceFlorale': predominancesFloralesSelected.toList(),
+      'dateRecolte': dateCollecte.value,
+      "typeProduit": "Miel brute",
+    };
+    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+        .contains(commune.value)) {
+      sousDocData['arrondissement'] = arrondissement.value;
+      sousDocData['secteur'] = secteur.value;
+      sousDocData['quartier'] = quartier.value;
+    } else {
+      sousDocData['village'] = village.value;
+    }
+
+    await collecteRef.collection('Récolte').add(sousDocData);
+
+    Get.snackbar("Succès", "Collecte (Récolte) enregistrée !");
+    reset();
+    Get.back();
+  }
+
+  /// Enregistre une collecte de type ACHAT
   /// Enregistre une collecte de type ACHAT
   Future<void> enregistrerCollecteAchat({
     required bool isScoops,
@@ -837,9 +753,42 @@ class CollecteController extends GetxController {
 
     final String fournisseurCollection =
         isScoops ? 'SCOOP_info' : 'Individuel_info';
-    await achatDocRef.collection(fournisseurCollection).add({
+
+    // LOGIQUE LOCALISATION AVANCÉE POUR SCOOPS / INDIVIDUEL
+    final commune =
+        isScoops ? communeScoopsAjout.value : communeIndivAjout.value;
+    final quartier =
+        isScoops ? quartierScoopsAjout.value : quartierIndivAjout.value;
+    final arrondissement = isScoops
+        ? arrondissementScoopsAjout.value
+        : arrondissementIndivAjout.value;
+    final secteur =
+        isScoops ? secteurScoopsAjout.value : secteurIndivAjout.value;
+    final village =
+        isScoops ? villageScoopsAjout.value : villageIndivAjout.value;
+
+    Map<String, dynamic> fournisseurDetailsFinal = {
       ...fournisseurDetails,
-    });
+      'commune': commune,
+      'region': isScoops ? regionScoopsAjout.value : regionIndivAjout.value,
+      'province':
+          isScoops ? provinceScoopsAjout.value : provinceIndivAjout.value,
+    };
+
+    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"].contains(commune)) {
+      fournisseurDetailsFinal["arrondissement"] = arrondissement;
+      fournisseurDetailsFinal["secteur"] = secteur;
+      fournisseurDetailsFinal["quartier"] = quartier;
+      fournisseurDetailsFinal["localite"] =
+          "${quartier ?? ''} || ${commune ?? ''}";
+    } else {
+      fournisseurDetailsFinal["village"] = village;
+      fournisseurDetailsFinal["localite"] = village;
+    }
+
+    await achatDocRef
+        .collection(fournisseurCollection)
+        .add(fournisseurDetailsFinal);
 
     Get.snackbar("Succès", "Collecte (Achat) enregistrée !");
     reset();
@@ -971,29 +920,14 @@ class CollecteController extends GetxController {
     // Pour afficher/masquer les sous-formulaires
     isAddingSCOOPS.value = false;
     isAddingIndividuel.value = false;
-  }
 
-  // Pour SCOOPS
-  List<String> champsManquantsScoops() {
-    List<String> manquants = [];
-    if (nomScoopsAjout.text.isEmpty) manquants.add("Nom SCOOPS");
-    if (nomPresidentAjout.text.isEmpty) manquants.add("Nom du président");
-    if (numeroPresidentCtrl.text.isEmpty) manquants.add("Numéro du président");
-    if (regionScoopsAjout.value == null) manquants.add("Région");
-    if (provinceScoopsAjout.value == null) manquants.add("Province");
-    if (communeScoopsAjout.value == null) manquants.add("Commune");
-    if (villageScoopsAjout.value == null || villageScoopsAjout.value!.isEmpty)
-      manquants.add("Village");
-    if (predominancesFloralesSelected.isEmpty) manquants.add("Florale");
-    if (nbRuchesTradScoopsAjout.text.isEmpty)
-      manquants.add("Nb ruches traditionnelles");
-    if (nbRuchesModScoopsAjout.text.isEmpty)
-      manquants.add("Nb ruches modernes");
-    if (nbMembreScoopsAjout.text.isEmpty) manquants.add("Nb membres");
-    if (nbHommeScoopsAjout.text.isEmpty) manquants.add("Nb hommes");
-    if (nbJeuneScoopsAjout.text.isEmpty) manquants.add("Nb jeunes");
-    // Ajoute ici d'autres validations si besoin
-    return manquants;
+    arrondissement.value = null;
+    secteur.value = null;
+    quartier.value = null;
+    nomRecolteur.value = null;
+    quantiteRecolte.value = null;
+    nbRuchesRecoltees.value = null;
+    dateCollecte.value = null;
   }
 
 // Pour Individuel

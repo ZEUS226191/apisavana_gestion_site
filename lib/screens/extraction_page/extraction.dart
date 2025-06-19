@@ -42,6 +42,14 @@ class ExtractionPage extends StatelessWidget {
         ),
         backgroundColor: Colors.teal[50],
         body: Obx(() {
+          if (c.isLoading.value) {
+            return Center(
+              child: CircularProgressIndicator(
+                color: Colors.teal[700],
+                strokeWidth: 4,
+              ),
+            );
+          }
           return TabBarView(
             children: [
               _buildCollecteExtractionSection(c.recoltes, "Récolte", context),
@@ -227,7 +235,6 @@ class ExtractionPage extends StatelessWidget {
                                 shape: StadiumBorder(
                                     side: BorderSide(color: Colors.teal[100]!)),
                               ),
-                            // Champ "Départ"
                             Chip(
                               label: Text(
                                 "Départ: ${quantiteDepart.toStringAsFixed(2)} $unite",
@@ -309,7 +316,6 @@ class ExtractionPage extends StatelessWidget {
                                   ],
                                 ),
                               ),
-
                             if (statutExtraction == "Entièrement Extraite")
                               Chip(
                                 avatar: Icon(Icons.opacity,
@@ -396,8 +402,9 @@ class ExtractionPage extends StatelessWidget {
                             Icon(Icons.location_on,
                                 size: 15, color: Colors.red[300]),
                             SizedBox(width: 2),
+                            // GESTION LOCALITE/QUARTIER
                             Text(
-                              "${e['village'] ?? '-'}",
+                              _getLocalitePourAffichage(e),
                               style: TextStyle(fontSize: 13),
                             ),
                           ],
@@ -454,6 +461,20 @@ class ExtractionPage extends StatelessWidget {
         }).toList(),
       ),
     );
+  }
+
+  /// Affiche "Commune | Quartier" si possible, sinon le village
+  String _getLocalitePourAffichage(Map e) {
+    final commune = e['commune']?.toString();
+    final quartier = e['quartier']?.toString();
+    final village = e['village']?.toString();
+    if (commune != null &&
+        commune.isNotEmpty &&
+        quartier != null &&
+        quartier.isNotEmpty) {
+      return "$commune | $quartier";
+    }
+    return village ?? "-";
   }
 
   String formatFlorale(dynamic florale) {

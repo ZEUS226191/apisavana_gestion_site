@@ -1,8 +1,12 @@
 import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
-// Mapping des modules accessibles par rôle
 final Map<String, List<String>> roleModules = {
   "Admin": [
     "collecte",
@@ -34,40 +38,140 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   late final GlobalKey<ScaffoldState> _scaffoldKey;
-
-  final Map<String, dynamic> fakeData = {
-    "collecte": {
-      "recolte": {"valeur": 320, "unite": "kg"},
-      "achat": {"valeur": 85, "unite": "litres"},
-    },
-    "controle_reception": 8,
-    "miel_filtre": {"valeur": 350, "unite": "kg"},
-    "conditionne": {"valeur": 60, "unite": "litres"},
-    "ventes": {
-      "comptant": {"valeur": 45, "unite": "kg"},
-      "credit": {"valeur": 15, "unite": "kg"},
-      "recouvrement": {"valeur": 5, "unite": "kg"},
-    },
-    "stock": {
-      "brut": 120,
-      "semi_fini": 40,
-      "fini": {
-        "koudougou": {"valeur": 30, "unite": "litres"},
-        "ouaga": {"valeur": 55, "unite": "kg"},
-      }
-    },
-    "alertes": [
-      {"type": "Stock bas", "message": "Stock brut inférieur à 20kg"},
-      {"type": "Crédit en attente", "message": "Client A : 10kg non réglés"},
-      {"type": "Anomalie", "message": "Lot #27 non conforme"},
-    ],
-  };
-
   late AnimationController _animationController;
   late Animation<double> _fadeInAnimation;
 
   bool get isLargeScreen =>
       MediaQuery.of(context).size.width >= 900; // seuil PC
+
+  // --- Statistiques dynamiques (Firestore)
+  Map<String, dynamic> statsData = {};
+  bool loadingStats = true;
+
+  // PDF
+  Future<void> exportPDF(String section) async {
+    try {
+      final pdf = pw.Document();
+      List<String> columns = [];
+      List<List<String>> rows = [];
+
+      if (section == "collecte") {
+        columns = [
+          "Date",
+          "Type",
+          "Quantité",
+          "Unité",
+          "Producteur/SCOOPS",
+          "Localité"
+        ];
+        rows = (statsData["collecteRows"] ?? []).map<List<String>>((row) {
+          return [
+            row["date"] ?? "",
+            row["type"] ?? "",
+            row["quantite"].toString(),
+            row["unite"] ?? "",
+            row["producteur"] ?? "",
+            row["localite"] ?? ""
+          ].map((e) => e.toString()).toList();
+        }).toList();
+      } else if (section == "ventes") {
+        columns = [
+          "Date",
+          "Client",
+          "Commercial",
+          "Type vente",
+          "Montant total"
+        ];
+        rows = (statsData["ventesRows"] ?? []).map<List<String>>((row) {
+          return [
+            row["date"] ?? "",
+            row["client"] ?? "",
+            row["commercial"] ?? "",
+            row["typeVente"] ?? "",
+            row["montantTotal"]?.toString() ?? ""
+          ].map((e) => e.toString()).toList();
+        }).toList();
+      } else if (section == "stock") {
+        columns = [
+          "Date",
+          "Produit",
+          "Quantité",
+          "Unité",
+          "Localité",
+          "Magasin"
+        ];
+        rows = (statsData["stockRows"] ?? []).map<List<String>>((row) {
+          return [
+            row["date"] ?? "",
+            row["produit"] ?? "",
+            row["quantite"].toString(),
+            row["unite"] ?? "",
+            row["localite"] ?? "",
+            row["magasin"] ?? ""
+          ].map((e) => e.toString()).toList();
+        }).toList();
+      }
+      if (rows.isEmpty) {
+        pdf.addPage(pw.Page(
+            build: (context) =>
+                pw.Center(child: pw.Text("Aucune donnée à exporter"))));
+      } else {
+        pdf.addPage(
+          pw.Page(
+            build: (context) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  "Export $section",
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: 22),
+                ),
+                pw.SizedBox(height: 14),
+                pw.Table(
+                  border: pw.TableBorder.all(),
+                  children: [
+                    pw.TableRow(
+                      decoration: pw.BoxDecoration(color: PdfColors.grey300),
+                      children: columns
+                          .map((h) => pw.Padding(
+                                padding: const pw.EdgeInsets.all(4),
+                                child: pw.Text(h,
+                                    style: pw.TextStyle(
+                                        fontWeight: pw.FontWeight.bold)),
+                              ))
+                          .toList(),
+                    ),
+                    ...rows.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final row = entry.value;
+                      return pw.TableRow(
+                        decoration: pw.BoxDecoration(
+                            color: index.isEven
+                                ? PdfColors.white
+                                : PdfColors.grey100),
+                        children: row
+                            .map((cell) => pw.Padding(
+                                  padding: const pw.EdgeInsets.all(4),
+                                  child: pw.Text(cell),
+                                ))
+                            .toList(),
+                      );
+                    }),
+                  ],
+                )
+              ],
+            ),
+          ),
+        );
+      }
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Erreur export PDF: $e")));
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -78,10 +182,183 @@ class _DashboardScreenState extends State<DashboardScreen>
         CurvedAnimation(parent: _animationController, curve: Curves.easeIn);
     _animationController.forward();
     _scaffoldKey = GlobalKey<ScaffoldState>();
-    // Assure que UserSession est bien enregistré
     if (!Get.isRegistered<UserSession>()) {
       Get.put(UserSession());
     }
+    loadStats();
+  }
+
+  Future<void> loadStats() async {
+    setState(() => loadingStats = true);
+    Map<String, dynamic> stats = {};
+    // --- COLLECTE ---
+    final collecteSnap =
+        await FirebaseFirestore.instance.collection('collectes').get();
+    int qteRecolte = 0, qteAchat = 0;
+    String uniteRecolte = "kg", uniteAchat = "litres";
+    List collecteRows = [];
+    for (final doc in collecteSnap.docs) {
+      final data = doc.data();
+      String date = "";
+      if (data["dateCollecte"] is Timestamp) {
+        date = DateFormat('dd/MM/yyyy')
+            .format((data["dateCollecte"] as Timestamp).toDate());
+      }
+      final type = data["type"] ?? "";
+      int quantite = int.tryParse(data["quantite"].toString()) ?? 0;
+      String unite = data["unite"] ?? (type == "achat" ? "litres" : "kg");
+      String producteur = data["nomIndividuel"] ?? data["nomPrenom"] ?? "";
+      String localite = data["localite"] ?? data["commune"] ?? "";
+      collecteRows.add({
+        "date": date,
+        "type": type,
+        "quantite": quantite,
+        "unite": unite,
+        "producteur": producteur,
+        "localite": localite
+      });
+      if (type == "achat") {
+        qteAchat += quantite;
+        uniteAchat = unite;
+      } else if (type == "récolte" || type == "recolte") {
+        qteRecolte += quantite;
+        uniteRecolte = unite;
+      }
+    }
+    stats["collecte"] = {
+      "recolte": {"valeur": qteRecolte, "unite": uniteRecolte},
+      "achat": {"valeur": qteAchat, "unite": uniteAchat},
+    };
+    stats["collecteRows"] = collecteRows;
+
+    // --- VENTES ---
+    final ventesSnap = await FirebaseFirestore.instance
+        .collectionGroup('ventes_effectuees')
+        .get();
+    int vComptant = 0, vCredit = 0, vRecouv = 0;
+    String uniteVente = "kg";
+    List ventesRows = [];
+    Map<String, String> clientsMap = {};
+    Map<String, String> commerciauxMap = {};
+    // Récupérer tous les clients et commerciaux pour mapping noms
+    final clientsSnap =
+        await FirebaseFirestore.instance.collection('clients').get();
+    for (var d in clientsSnap.docs) {
+      clientsMap[d.id] =
+          d.data()['nomBoutique'] ?? d.data()['nomGerant'] ?? d.id;
+    }
+    final commSnap = await FirebaseFirestore.instance
+        .collection('utilisateurs')
+        .where('role', isEqualTo: 'commercial')
+        .get();
+    for (var d in commSnap.docs) {
+      final nom = d.data()['nom'] ?? d.id;
+      commerciauxMap[d.id] = nom;
+      final uid = d.data()['uid'];
+      if (uid != null && uid != d.id) {
+        commerciauxMap[uid] = nom;
+      }
+    }
+    for (final doc in ventesSnap.docs) {
+      final v = doc.data() as Map<String, dynamic>;
+      String date = "";
+      if (v["dateVente"] is Timestamp) {
+        date = DateFormat('dd/MM/yyyy')
+            .format((v["dateVente"] as Timestamp).toDate());
+      }
+      String client = clientsMap[v['clientId']] ?? v['clientNom'] ?? "";
+      String commId = v['commercialId']?.toString() ?? "";
+      String commNom = v['commercialNom']?.toString() ?? "";
+      String commercial = commerciauxMap[commId] ?? commNom ?? "";
+      String typeVente = v['typeVente'] ?? "";
+      int montantTotal = int.tryParse(v['montantTotal']?.toString() ?? "") ?? 0;
+      ventesRows.add({
+        "date": date,
+        "client": client,
+        "commercial": commercial,
+        "typeVente": typeVente,
+        "montantTotal": montantTotal
+      });
+      if (typeVente == "Comptant")
+        vComptant += montantTotal;
+      else if (typeVente == "Crédit")
+        vCredit += montantTotal;
+      else if (typeVente == "Recouvrement") vRecouv += montantTotal;
+    }
+    stats["ventes"] = {
+      "comptant": {"valeur": vComptant, "unite": uniteVente},
+      "credit": {"valeur": vCredit, "unite": uniteVente},
+      "recouvrement": {"valeur": vRecouv, "unite": uniteVente},
+    };
+    stats["ventesRows"] = ventesRows;
+
+    // --- STOCK ---
+    final stockSnap =
+        await FirebaseFirestore.instance.collection('conditionnement').get();
+    int brut = 0, semiFini = 0, finiKoudougou = 0, finiOuaga = 0;
+    String uniteBrut = "kg",
+        uniteSemiFini = "kg",
+        uniteFiniKdg = "litres",
+        uniteFiniOuaga = "kg";
+    List stockRows = [];
+    for (final doc in stockSnap.docs) {
+      final lot = doc.data();
+      String date = "";
+      if (lot["date"] is Timestamp) {
+        date = DateFormat('dd/MM/yyyy')
+            .format((lot["date"] as Timestamp).toDate());
+      }
+      String produit = lot["predominanceFlorale"] ?? "";
+      int quantite =
+          int.tryParse(lot["quantiteRestante"]?.toString() ?? "") ?? 0;
+      String localite = lot["localite"] ?? "";
+      String magasin = lot["magasin"] ?? "";
+      String unite = "kg";
+      stockRows.add({
+        "date": date,
+        "produit": produit,
+        "quantite": quantite,
+        "unite": unite,
+        "localite": localite,
+        "magasin": magasin
+      });
+      if ((magasin.toLowerCase() == "koudougou" ||
+          localite.toLowerCase() == "koudougou")) {
+        finiKoudougou += quantite;
+      } else if ((magasin.toLowerCase() == "ouagadougou" ||
+          localite.toLowerCase() == "ouagadougou")) {
+        finiOuaga += quantite;
+      } else {
+        brut += quantite;
+      }
+    }
+    stats["stock"] = {
+      "brut": brut,
+      "semi_fini": semiFini,
+      "fini": {
+        "koudougou": {"valeur": finiKoudougou, "unite": uniteFiniKdg},
+        "ouaga": {"valeur": finiOuaga, "unite": uniteFiniOuaga},
+      }
+    };
+    stats["stockRows"] = stockRows;
+
+    // Alertes
+    stats["alertes"] = [
+      if (brut < 20)
+        {"type": "Stock bas", "message": "Stock brut inférieur à 20kg"},
+      if (vCredit > 0)
+        {
+          "type": "Crédit en attente",
+          "message": "Il y a des crédits non réglés"
+        },
+      if ((semiFini + brut + finiKoudougou + finiOuaga) == 0)
+        {"type": "Anomalie", "message": "Aucun stock enregistré"},
+    ];
+
+    setState(() {
+      statsData = stats;
+      loadingStats = false;
+    });
   }
 
   void _onModuleSelected(String module) {
@@ -145,7 +422,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     final isAdmin = role.toLowerCase() == "admin";
     final allowedModules = roleModules[role] ?? [];
 
-    // Liste navigation, labels en minuscules pour comparer
     final navButtons = [
       _headerBtn("collecte", Icons.api, () => _onModuleSelected("collecte"),
           enabled: isAdmin || allowedModules.contains("collecte")),
@@ -199,7 +475,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           ),
           Spacer(),
-          // Affichage utilisateur à droite (optionnel)
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -224,7 +499,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           ),
           if (isLargeScreen)
-            // NAVIGATION SCROLLABLE HORIZONTALEMENT
             Expanded(
               flex: 8,
               child: SingleChildScrollView(
@@ -313,7 +587,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          // Les modules
           _drawerItem("Collecte", Icons.api, "collecte",
               isAdmin || allowedModules.contains("collecte")),
           _drawerItem("Contrôle", Icons.verified, "controle",
@@ -499,10 +772,25 @@ class _DashboardScreenState extends State<DashboardScreen>
       _dashboardCard(
         label: "Quantités de miel collectées",
         children: [
-          _infoRow("Récolte",
-              "${fakeData["collecte"]["recolte"]["valeur"]} ${fakeData["collecte"]["recolte"]["unite"]}"),
-          _infoRow("Achat",
-              "${fakeData["collecte"]["achat"]["valeur"]} ${fakeData["collecte"]["achat"]["unite"]}"),
+          _infoRow(
+              "Récolte",
+              loadingStats
+                  ? "..."
+                  : "${statsData["collecte"]?["recolte"]["valeur"] ?? 0} ${statsData["collecte"]?["recolte"]["unite"] ?? ""}"),
+          _infoRow(
+              "Achat",
+              loadingStats
+                  ? "..."
+                  : "${statsData["collecte"]?["achat"]["valeur"] ?? 0} ${statsData["collecte"]?["achat"]["unite"] ?? ""}"),
+          ElevatedButton.icon(
+            onPressed: loadingStats ? null : () => exportPDF("collecte"),
+            icon: Icon(Icons.picture_as_pdf),
+            label: Text("Exporter PDF"),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber[100],
+                foregroundColor: Colors.amber[900],
+                elevation: 0),
+          ),
         ],
         icon: Icons.api,
         enabled: isAdmin || allowedModules.contains("collecte"),
@@ -511,43 +799,32 @@ class _DashboardScreenState extends State<DashboardScreen>
             : null,
       ),
       _dashboardCard(
-        label: "Contrôle et réception",
-        children: [
-          _infoRow("Lots contrôlés", "${fakeData["controle_reception"]}"),
-        ],
-        icon: Icons.verified,
-        enabled: isAdmin || allowedModules.contains("controle"),
-        onTap: (isAdmin || allowedModules.contains("controle"))
-            ? () => _onModuleSelected("controle")
-            : null,
-      ),
-      _dashboardCard(
-        label: "Miel filtré & conditionné",
-        children: [
-          _infoRow("Filtré",
-              "${fakeData["miel_filtre"]["valeur"]} ${fakeData["miel_filtre"]["unite"]}"),
-          _infoRow("Conditionné",
-              "${fakeData["conditionne"]["valeur"]} ${fakeData["conditionne"]["unite"]}"),
-        ],
-        icon: Icons.science,
-        enabled: isAdmin ||
-            allowedModules.contains("extraction") ||
-            allowedModules.contains("conditionnement"),
-        onTap: (isAdmin ||
-                allowedModules.contains("extraction") ||
-                allowedModules.contains("conditionnement"))
-            ? () => _onModuleSelected("extraction")
-            : null,
-      ),
-      _dashboardCard(
         label: "Ventes",
         children: [
-          _infoRow("Comptant",
-              "${fakeData["ventes"]["comptant"]["valeur"]} ${fakeData["ventes"]["comptant"]["unite"]}"),
-          _infoRow("Crédit",
-              "${fakeData["ventes"]["credit"]["valeur"]} ${fakeData["ventes"]["credit"]["unite"]}"),
-          _infoRow("Recouvrement",
-              "${fakeData["ventes"]["recouvrement"]["valeur"]} ${fakeData["ventes"]["recouvrement"]["unite"]}"),
+          _infoRow(
+              "Comptant",
+              loadingStats
+                  ? "..."
+                  : "${statsData["ventes"]?["comptant"]["valeur"] ?? 0} ${statsData["ventes"]?["comptant"]["unite"] ?? ""}"),
+          _infoRow(
+              "Crédit",
+              loadingStats
+                  ? "..."
+                  : "${statsData["ventes"]?["credit"]["valeur"] ?? 0} ${statsData["ventes"]?["credit"]["unite"] ?? ""}"),
+          _infoRow(
+              "Recouvrement",
+              loadingStats
+                  ? "..."
+                  : "${statsData["ventes"]?["recouvrement"]["valeur"] ?? 0} ${statsData["ventes"]?["recouvrement"]["unite"] ?? ""}"),
+          ElevatedButton.icon(
+            onPressed: loadingStats ? null : () => exportPDF("ventes"),
+            icon: Icon(Icons.picture_as_pdf),
+            label: Text("Exporter PDF"),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber[100],
+                foregroundColor: Colors.amber[900],
+                elevation: 0),
+          ),
         ],
         icon: Icons.shopping_cart,
         enabled: isAdmin ||
@@ -563,12 +840,26 @@ class _DashboardScreenState extends State<DashboardScreen>
         label: "Stock disponible",
         children: [
           _infoRow("Matière première (Miel brut)",
-              "${fakeData["stock"]["brut"]} kg"),
-          _infoRow("Produit semi fini", "${fakeData["stock"]["semi_fini"]} kg"),
-          _infoRow("Produit fini Koudougou",
-              "${fakeData["stock"]["fini"]["koudougou"]["valeur"]} ${fakeData["stock"]["fini"]["koudougou"]["unite"]}"),
-          _infoRow("Produit fini Ouagadougou",
-              "${fakeData["stock"]["fini"]["ouaga"]["valeur"]} ${fakeData["stock"]["fini"]["ouaga"]["unite"]}"),
+              loadingStats ? "..." : "${statsData["stock"]?["brut"] ?? 0} kg"),
+          _infoRow(
+              "Produit fini Koudougou",
+              loadingStats
+                  ? "..."
+                  : "${statsData["stock"]?["fini"]["koudougou"]["valeur"] ?? 0} ${statsData["stock"]?["fini"]["koudougou"]["unite"] ?? ""}"),
+          _infoRow(
+              "Produit fini Ouagadougou",
+              loadingStats
+                  ? "..."
+                  : "${statsData["stock"]?["fini"]["ouaga"]["valeur"] ?? 0} ${statsData["stock"]?["fini"]["ouaga"]["unite"] ?? ""}"),
+          ElevatedButton.icon(
+            onPressed: loadingStats ? null : () => exportPDF("stock"),
+            icon: Icon(Icons.picture_as_pdf),
+            label: Text("Exporter PDF"),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber[100],
+                foregroundColor: Colors.amber[900],
+                elevation: 0),
+          ),
         ],
         icon: Icons.storage,
         enabled: isAdmin || allowedModules.contains("stock"),
@@ -591,38 +882,42 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: 1100),
-                  child: ListView(
-                    padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    children: [
-                      _sectionTitle("Résumé des informations clés"),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          int crossAxisCount = constraints.maxWidth > 900
-                              ? 2
-                              : constraints.maxWidth > 600
-                                  ? 1
-                                  : 1;
-                          return Wrap(
-                            spacing: 24,
-                            runSpacing: 18,
-                            children: List.generate(
-                              cards.length,
-                              (i) => SizedBox(
-                                width: constraints.maxWidth / crossAxisCount -
-                                    (crossAxisCount == 2 ? 24 : 0),
-                                child: cards[i],
-                              ),
+                  child: loadingStats
+                      ? Center(child: CircularProgressIndicator())
+                      : ListView(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 12),
+                          children: [
+                            _sectionTitle("Résumé des informations clés"),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                int crossAxisCount = constraints.maxWidth > 900
+                                    ? 2
+                                    : constraints.maxWidth > 600
+                                        ? 1
+                                        : 1;
+                                return Wrap(
+                                  spacing: 24,
+                                  runSpacing: 18,
+                                  children: List.generate(
+                                    cards.length,
+                                    (i) => SizedBox(
+                                      width: constraints.maxWidth /
+                                              crossAxisCount -
+                                          (crossAxisCount == 2 ? 24 : 0),
+                                      child: cards[i],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                      _sectionTitle("Alertes"),
-                      ...List.generate(
-                        fakeData["alertes"].length,
-                        (i) => _buildAlertCard(fakeData["alertes"][i]),
-                      ),
-                    ],
-                  ),
+                            _sectionTitle("Alertes"),
+                            ...List.generate(
+                              (statsData["alertes"] ?? []).length,
+                              (i) => _buildAlertCard(statsData["alertes"][i]),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),

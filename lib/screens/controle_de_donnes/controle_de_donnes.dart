@@ -30,6 +30,8 @@ class _ControlePageState extends State<ControlePage>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
+    // S'assurer que les données sont bien chargées au démarrage
+    //c.chargerCollectes();
   }
 
   @override
@@ -122,7 +124,6 @@ class _ControlePageState extends State<ControlePage>
   }
 }
 
-/// Ajoute l'image en haut, elle scrolle avec les cards, animée slide+fade, responsive.
 Widget _buildCollecteSectionWithImage(
   RxList<Map> list,
   String type,
@@ -269,6 +270,8 @@ Widget _carteCollecte({
               runSpacing: 6,
               children: [
                 _infoChip("Type producteur", collecte['producteurType']),
+                _infoChip(
+                    "Type ruche", collecte['typeRuche']), // AJOUT TYPE RUCHE
                 _infoChip("Village", collecte['village']),
                 _infoChip(
                     "Date collecte", _formatDate(collecte['dateCollecte'])),

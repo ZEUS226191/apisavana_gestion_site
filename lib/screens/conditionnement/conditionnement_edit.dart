@@ -15,6 +15,8 @@ class ConditionnementEditController extends GetxController {
   final RxMap<String, int> nbPotsParType = <String, int>{}.obs;
   final RxMap<String, double> prixTotalParType = <String, double>{}.obs;
 
+  final RxString obsFlorale = ''.obs;
+
   // Emballages possibles
   final List<String> typesEmballage = [
     "1.5Kg",
@@ -22,8 +24,9 @@ class ConditionnementEditController extends GetxController {
     "720g",
     "500g",
     "250g",
-    "30g",
+    "Pot alvéoles 30g",
     "Stick 20g",
+    "7kg",
   ];
 
   // Conversion des types en kg
@@ -34,25 +37,34 @@ class ConditionnementEditController extends GetxController {
     "500g": 0.5,
     "250g": 0.25,
     "30g": 0.03,
+    "Pot alvéoles 30g": 0.03,
     "Stick 20g": 0.02,
+    "7kg": 7.0,
   };
 
-  // Prix par type et par mode
-  final Map<String, Map<VenteMode, double>> prixUnitaire = {
-    "Stick 20g": {
-      VenteMode.detail: 180,
-      VenteMode.gros: 1500
-    }, // 1500 le paquet de 10
-    "30g": {
-      VenteMode.detail: 200,
-      VenteMode.gros: 36000
-    }, // 36000 le carton de 200
-    "250g": {VenteMode.detail: 950, VenteMode.gros: 950},
-    "500g": {VenteMode.detail: 1800, VenteMode.gros: 1800},
-    "1Kg": {VenteMode.detail: 3400, VenteMode.gros: 3400},
-    "1.5Kg": {VenteMode.detail: 4500, VenteMode.gros: 4500},
-    "720g": {VenteMode.detail: 2500, VenteMode.gros: 2500},
-    "7kg": {VenteMode.detail: 23000, VenteMode.gros: 23000},
+  // Prix par type et par mode pour MIEL MILLE FLEURS (standard)
+  static const Map<String, double> prixGrosMilleFleurs = {
+    "Stick 20g": 1500, // Paquet de 10
+    "Pot alvéoles 30g": 36000, // Carton de 200
+    "250g": 950,
+    "500g": 1800,
+    "1Kg": 3400,
+    "720g": 2500,
+    "1.5Kg": 4500,
+    "7kg": 23000,
+  };
+
+  // Prix par type et par mode pour MIEL MONO FLEUR
+  static const Map<String, double> prixGrosMonoFleur = {
+    "250g": 1750,
+    "500g": 3000,
+    "1Kg": 5000,
+    "720g": 3500,
+    "1.5Kg": 6000,
+    "7kg": 34000,
+    // On garde les sticks et pots alvéoles au même prix que mille fleurs si pas précisé
+    "Stick 20g": 1500,
+    "Pot alvéoles 30g": 36000,
   };
 
   // Pour sticks/alvéole : mode de vente (détail/gros) par type (observable Rx)
@@ -69,34 +81,73 @@ class ConditionnementEditController extends GetxController {
       nbPotsController[type] = TextEditingController();
       nbPotsController[type]!.addListener(_recalcule);
       // Mode de vente par défaut
-      if (type == "Stick 20g" || type == "30g") {
-        venteModeParType[type] = VenteMode.detail;
+      if (type == "Stick 20g" || type == "Pot alvéoles 30g") {
+        venteModeParType[type] = VenteMode.gros; // Toujours gros
+      }
+    }
+    _initFlorale();
+  }
+
+  Future<void> _initFlorale() async {
+    if ((lotFiltrage['predominanceFlorale'] ?? '').toString().isNotEmpty) {
+      obsFlorale.value = lotFiltrage['predominanceFlorale'];
+    } else {
+      final lotNum = lotFiltrage['lot'];
+      if (lotNum == null || lotNum.toString().isEmpty) {
+        obsFlorale.value = '-';
+        return;
+      }
+      final snap = await FirebaseFirestore.instance
+          .collection('Controle')
+          .where('numeroLot', isEqualTo: lotNum)
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        final ctrl = snap.docs.first.data();
+        obsFlorale.value = ctrl['predominanceFlorale']?.toString() ?? '-';
+      } else {
+        obsFlorale.value = '-';
       }
     }
   }
 
-  double get quantiteRecue => (lotFiltrage['quantiteFiltree'] ?? 0.0) * 1.0;
+  double get quantiteRecue =>
+      (lotFiltrage['quantiteFiltree'] ??
+          lotFiltrage['quantiteFiltrée'] ??
+          0.0) *
+      1.0;
   String get lotId =>
       lotFiltrage['collecteId']?.toString() ?? lotFiltrage['id'] ?? '';
   String get lotOrigine => lotFiltrage['lot']?.toString() ?? '';
 
-  /// Calcul du total conditionné en kg (tous types confondus)
+  /// Calcule le bon prix selon la florale
+  double getPrixGros(String type) {
+    final florale = (obsFlorale.value ?? '').toLowerCase();
+    if (_isMonoFleur(florale)) {
+      return prixGrosMonoFleur[type] ?? prixGrosMilleFleurs[type] ?? 0.0;
+    } else {
+      return prixGrosMilleFleurs[type] ?? 0.0;
+    }
+  }
+
+  bool _isMonoFleur(String florale) {
+    if (florale.contains("mono")) return true;
+    if (florale.contains("mille") || florale.contains("mixte")) return false;
+    if (florale.contains("+") || florale.contains(",")) return false;
+    return florale.trim().isNotEmpty;
+  }
+
   double get totalConditionneKg {
     double total = 0.0;
     for (var type in typesEmballage) {
       if (emballageSelection[type]?.value == true) {
         final nb = int.tryParse(nbPotsController[type]!.text) ?? 0;
-        final poidsKg = typeToKg[type] ?? 0.0;
-        // Récupère le mode courant
-        VenteMode mode = venteModeParType[type] ?? VenteMode.detail;
-        if (type == "Stick 20g" && mode == VenteMode.gros) {
-          // 1 paquet = 10 sticks de 20g = 0.2kg
+        if (type == "Stick 20g") {
           total += nb * 10 * 0.02;
-        } else if (type == "30g" && mode == VenteMode.gros) {
-          // 1 carton = 200 pots de 30g = 6kg
+        } else if (type == "Pot alvéoles 30g") {
           total += nb * 200 * 0.03;
         } else {
-          total += nb * poidsKg;
+          total += nb * (typeToKg[type] ?? 0.0);
         }
       }
     }
@@ -114,14 +165,12 @@ class ConditionnementEditController extends GetxController {
     for (var type in typesEmballage) {
       if (emballageSelection[type]?.value == true) {
         final nb = int.tryParse(nbPotsController[type]!.text) ?? 0;
-        VenteMode mode = venteModeParType[type] ?? VenteMode.detail;
-        double prix = prixUnitaire[type]?[mode] ?? 0.0;
-        // Pour le prix total
-        if (type == "Stick 20g" && mode == VenteMode.gros) {
+        double prix = getPrixGros(type);
+        if (type == "Stick 20g") {
           prixTotalParType[type] = nb * prix;
-          nbPotsParType[type] = nb * 10; // nombre d'unités de stick
+          nbPotsParType[type] = nb * 10;
           nbTotal += nb * 10;
-        } else if (type == "30g" && mode == VenteMode.gros) {
+        } else if (type == "Pot alvéoles 30g") {
           prixTotalParType[type] = nb * prix;
           nbPotsParType[type] = nb * 200;
           nbTotal += nb * 200;
@@ -141,14 +190,12 @@ class ConditionnementEditController extends GetxController {
       dateConditionnement.value != null &&
       nbTotalPots.value > 0 &&
       totalConditionneKg > 0 &&
-      (totalConditionneKg - quantiteRecue).abs() <
-          1.501; // doit être égal à la quantité reçue
+      (quantiteRecue - totalConditionneKg).abs() <= 10.0;
 
-  // Après l'enregistrement du conditionnement
   Future<void> enregistrerConditionnement() async {
     if (!isReadyToSave) {
       Get.snackbar("Erreur",
-          "Vérifiez vos saisies : la quantité conditionnée doit être égale à la quantité reçue !");
+          "Vérifiez vos saisies : la quantité conditionnée doit être au plus 10kg inférieure à la quantité reçue !");
       return;
     }
 
@@ -156,20 +203,17 @@ class ConditionnementEditController extends GetxController {
     for (var type in typesEmballage) {
       if (emballageSelection[type]?.value == true) {
         final nb = int.tryParse(nbPotsController[type]!.text) ?? 0;
-        VenteMode mode = venteModeParType[type] ?? VenteMode.detail;
-        double prix = prixUnitaire[type]?[mode] ?? 0.0;
+        double prix = getPrixGros(type);
         emballages.add({
           'type': type,
-          'mode': mode == VenteMode.gros
-              ? (type == "Stick 20g"
-                  ? "Paquet (10)"
-                  : type == "30g"
-                      ? "Carton (200)"
-                      : "Gros")
-              : "Détail",
-          'nombre': (type == "Stick 20g" && mode == VenteMode.gros)
+          'mode': type == "Stick 20g"
+              ? "Paquet (10)"
+              : type == "Pot alvéoles 30g"
+                  ? "Carton (200)"
+                  : "Gros",
+          'nombre': type == "Stick 20g"
               ? nb * 10
-              : (type == "30g" && mode == VenteMode.gros)
+              : type == "Pot alvéoles 30g"
                   ? nb * 200
                   : nb,
           'contenanceKg': typeToKg[type] ?? 0.0,
@@ -179,13 +223,13 @@ class ConditionnementEditController extends GetxController {
       }
     }
 
-    // Enregistre dans 'conditionnement'
     await FirebaseFirestore.instance.collection('conditionnement').add({
       'date': dateConditionnement.value,
       'lotFiltrageId': lotFiltrage['id'] ?? lotFiltrage['id'].toString(),
       'collecteId':
           lotFiltrage['collecteId'] ?? lotFiltrage['collecteId'].toString(),
       'lotOrigine': lotFiltrage['lot'],
+      'predominanceFlorale': obsFlorale.value,
       'quantiteRecue': quantiteRecue,
       'quantiteConditionnee': totalConditionneKg,
       'quantiteRestante': quantiteRestante,
@@ -195,7 +239,6 @@ class ConditionnementEditController extends GetxController {
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    // Mets à jour le document filtrage
     await FirebaseFirestore.instance
         .collection('filtrage')
         .doc(lotFiltrage['id'])
@@ -203,6 +246,7 @@ class ConditionnementEditController extends GetxController {
       'statutConditionnement': 'Conditionné',
       'dateConditionnement': dateConditionnement.value,
       'quantiteConditionnee': totalConditionneKg,
+      'predominanceFlorale': obsFlorale.value,
     });
 
     Get.snackbar("Succès", "Conditionnement enregistré !");
@@ -216,9 +260,6 @@ class ConditionnementEditController extends GetxController {
     for (var type in typesEmballage) {
       emballageSelection[type]?.value = false;
       nbPotsController[type]?.clear();
-      if (venteModeParType.containsKey(type)) {
-        venteModeParType[type] = VenteMode.detail;
-      }
     }
     nbTotalPots.value = 0;
     prixTotal.value = 0.0;
@@ -236,7 +277,7 @@ class ConditionnementEditPage extends StatelessWidget {
     final c = Get.put(ConditionnementEditController(lotFiltrage));
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Conditionnement du lot filtré"),
+        title: const Text("Conditionnement du lot"),
         backgroundColor: Colors.amber[700],
       ),
       backgroundColor: Colors.amber[50],
@@ -258,9 +299,27 @@ class ConditionnementEditPage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Lot filtré #${c.lotId}",
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 17)),
+                            Row(
+                              children: [
+                                Icon(Icons.batch_prediction,
+                                    color: Colors.brown, size: 22),
+                                const SizedBox(width: 10),
+                                Text("Lot origine : ${c.lotOrigine}",
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 17)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Obx(() => Row(
+                                  children: [
+                                    Icon(Icons.local_florist,
+                                        color: Colors.green, size: 18),
+                                    const SizedBox(width: 6),
+                                    Text("Florale : ${c.obsFlorale.value}",
+                                        style: const TextStyle(fontSize: 15)),
+                                  ],
+                                )),
                             const SizedBox(height: 8),
                             Row(
                               children: [
@@ -272,19 +331,6 @@ class ConditionnementEditPage extends StatelessWidget {
                                     style: const TextStyle(fontSize: 15)),
                               ],
                             ),
-                            if (c.lotOrigine.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 5.0),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.link,
-                                        color: Colors.grey[700], size: 16),
-                                    const SizedBox(width: 6),
-                                    Text("Lot d'origine : ${c.lotOrigine}",
-                                        style: const TextStyle(fontSize: 15)),
-                                  ],
-                                ),
-                              ),
                           ],
                         ),
                       ),
@@ -302,8 +348,8 @@ class ConditionnementEditPage extends StatelessWidget {
                         child: Column(
                           children: [
                             ...c.typesEmballage.map((type) {
-                              final isSpecial =
-                                  (type == "Stick 20g" || type == "30g");
+                              final isSpecial = (type == "Stick 20g" ||
+                                  type == "Pot alvéoles 30g");
                               return Obx(() => CheckboxListTile(
                                     title: Row(
                                       children: [
@@ -314,21 +360,10 @@ class ConditionnementEditPage extends StatelessWidget {
                                               const SizedBox(width: 14),
                                               ToggleButtons(
                                                 isSelected: [
-                                                  c.venteModeParType[type] ==
-                                                      VenteMode.detail,
-                                                  c.venteModeParType[type] ==
-                                                      VenteMode.gros,
+                                                  true,
+                                                  true,
                                                 ],
-                                                onPressed: (i) {
-                                                  if (i == 0) {
-                                                    c.venteModeParType[type] =
-                                                        VenteMode.detail;
-                                                  } else {
-                                                    c.venteModeParType[type] =
-                                                        VenteMode.gros;
-                                                  }
-                                                  c._recalcule();
-                                                },
+                                                onPressed: null,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
                                                 selectedColor: Colors.white,
@@ -342,16 +377,13 @@ class ConditionnementEditPage extends StatelessWidget {
                                                       type == "Stick 20g"
                                                           ? "Détail"
                                                           : "Détail",
-                                                      style: TextStyle(
+                                                      style: const TextStyle(
+                                                          color: Colors.grey,
                                                           fontWeight:
-                                                              c.venteModeParType[
-                                                                          type] ==
-                                                                      VenteMode
-                                                                          .detail
-                                                                  ? FontWeight
-                                                                      .bold
-                                                                  : FontWeight
-                                                                      .normal),
+                                                              FontWeight.normal,
+                                                          decoration:
+                                                              TextDecoration
+                                                                  .lineThrough),
                                                     ),
                                                   ),
                                                   Padding(
@@ -362,19 +394,21 @@ class ConditionnementEditPage extends StatelessWidget {
                                                       type == "Stick 20g"
                                                           ? "Paquet (10)"
                                                           : "Carton (200)",
-                                                      style: TextStyle(
+                                                      style: const TextStyle(
                                                           fontWeight:
-                                                              c.venteModeParType[
-                                                                          type] ==
-                                                                      VenteMode
-                                                                          .gros
-                                                                  ? FontWeight
-                                                                      .bold
-                                                                  : FontWeight
-                                                                      .normal),
+                                                              FontWeight.bold,
+                                                          color: Colors.amber),
                                                     ),
                                                   ),
                                                 ],
+                                              ),
+                                              const SizedBox(width: 7),
+                                              const Text(
+                                                "(gros uniquement)",
+                                                style: TextStyle(
+                                                    color: Colors.orange,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12),
                                               ),
                                             ],
                                           )
@@ -389,23 +423,25 @@ class ConditionnementEditPage extends StatelessWidget {
                                     },
                                     controlAffinity:
                                         ListTileControlAffinity.leading,
-                                    secondary: c.emballageSelection[type]
-                                                ?.value ==
-                                            true
-                                        ? Container(
-                                            width: 60,
-                                            child: TextFormField(
-                                              controller:
-                                                  c.nbPotsController[type],
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration: const InputDecoration(
-                                                labelText: "Nb",
-                                                isDense: true,
-                                              ),
-                                            ),
-                                          )
-                                        : null,
+                                    secondary:
+                                        c.emballageSelection[type]?.value ==
+                                                true
+                                            ? Container(
+                                                width: 120, // élargi ici
+                                                child: TextFormField(
+                                                  controller:
+                                                      c.nbPotsController[type],
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  decoration: InputDecoration(
+                                                    labelText: "Nb",
+                                                    isDense: true,
+                                                    helperText:
+                                                        "Prix: ${c.getPrixGros(type).toStringAsFixed(0)} FCFA",
+                                                  ),
+                                                ),
+                                              )
+                                            : null,
                                   ));
                             }).toList(),
                           ],
@@ -488,7 +524,7 @@ class ConditionnementEditPage extends StatelessWidget {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8.0),
                                     child: Text(
-                                      "⚠️ La quantité conditionnée doit être exactement égale à la quantité reçue.",
+                                      "⚠️ La quantité conditionnée doit être au plus 10kg inférieure à la quantité reçue.",
                                       style: TextStyle(color: Colors.red[800]),
                                     ),
                                   ),

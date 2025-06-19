@@ -22,6 +22,9 @@ class _ControleFormPageState extends State<ControleFormPage>
   // Champs contrôleurs
   late TextEditingController producteurCtrl;
   String? villageSelected;
+  String? quartierSelected;
+  String? communeSelected;
+  String? localiteDisplay;
   String? periodeCollecte;
   late String natureMiel;
   String? contenant;
@@ -60,12 +63,22 @@ class _ControleFormPageState extends State<ControleFormPage>
       producteurCtrl = TextEditingController(
         text: widget.collecte['producteurNom'] ?? "",
       );
-      villageSelected = widget.collecte['village'] ?? "";
 
-      // On prend la période si présente, sinon null
+      // Gestion commune/quartier ou village
+      communeSelected = widget.collecte['commune']?.toString();
+      quartierSelected = widget.collecte['quartier']?.toString();
+      villageSelected = widget.collecte['village']?.toString();
+
+      if (communeSelected != null &&
+          communeSelected!.isNotEmpty &&
+          quartierSelected != null &&
+          quartierSelected!.isNotEmpty) {
+        localiteDisplay = "${communeSelected} | ${quartierSelected}";
+      } else {
+        localiteDisplay = villageSelected;
+      }
+
       periodeCollecte = widget.collecte['periodeCollecte'];
-
-      // Nature du miel
       natureMiel = widget.collecte['typeProduit']?.toString() ??
           widget.collecte['natureMiel']?.toString() ??
           "Brut";
@@ -74,7 +87,6 @@ class _ControleFormPageState extends State<ControleFormPage>
       qualite = widget.collecte['qualite'];
       uniteEnsemble = widget.collecte['unite']?.toString() ?? "kg";
 
-      // Prédominance florale: toujours une liste
       var pf = widget.collecte['predominanceFlorale'];
       if (pf is List) {
         predominanceFloraleList =
@@ -107,6 +119,12 @@ class _ControleFormPageState extends State<ControleFormPage>
     _animCtrl.forward();
 
     teneurEauCtrl.addListener(_autoSetQualite);
+  }
+
+  bool _isOuagaBobo(String? commune) {
+    return commune == "Ouagadougou" ||
+        commune == "BOBO-DIOULASSO" ||
+        commune == "Bobo-Dioulasso";
   }
 
   void _autoSetQualite() {
@@ -187,17 +205,34 @@ class _ControleFormPageState extends State<ControleFormPage>
       Get.snackbar("Erreur", "Veuillez générer et attribuer un N° de lot !");
       return;
     }
+
+    // Récupérer les identifiants uniques du produit spécifique
     final collecteId = widget.collecte['id'];
+    final recId = widget.collecte['recId'];
+    final achatId = widget.collecte['achatId'];
+    final detailIndex = widget.collecte['detailIndex'];
+
     if (collecteId == null) {
       Get.snackbar("Erreur", "Impossible de retrouver la collecte liée !");
       return;
     }
 
+    // Enregistre le contrôle pour CE produit spécifique
     final controleData = {
       "collecteId": collecteId,
+      if (recId != null) "recId": recId,
+      if (achatId != null) "achatId": achatId,
+      if (detailIndex != null) "detailIndex": detailIndex,
       "typeCollecte": widget.type,
+      "typeProduit": widget.collecte['typeProduit'] ?? "",
+      "typeRuche": widget.collecte['typeRuche'] ?? "",
       "producteur": producteurCtrl.text,
-      "village": villageSelected,
+      if (_isOuagaBobo(communeSelected) &&
+          quartierSelected != null &&
+          quartierSelected!.isNotEmpty)
+        "localite": "$communeSelected | $quartierSelected"
+      else
+        "village": villageSelected,
       "periodeCollecte": periodeCollecte,
       "natureMiel": natureMiel,
       "contenant": contenant,
@@ -221,13 +256,11 @@ class _ControleFormPageState extends State<ControleFormPage>
 
     try {
       await FirebaseFirestore.instance.collection("Controle").add(controleData);
-      await FirebaseFirestore.instance
-          .collection("collectes")
-          .doc(collecteId)
-          .update({
-        "controle": true,
-        "dateDernierControle": DateTime.now(),
-      });
+
+      // (Optionnel) : mettre à jour l'état "controle" ou "lot" sur CE produit dans la collecte :
+      // Si structure en tableau : update array element (avancé, nécessite un script)
+      // Sinon, tu peux faire un update sur le sous-doc ou le détail par index
+
       Get.snackbar("Succès", "Contrôle et réception enregistrés !",
           backgroundColor: Colors.green[100]);
       Navigator.pop(context, true);
@@ -239,6 +272,15 @@ class _ControleFormPageState extends State<ControleFormPage>
 
   @override
   Widget build(BuildContext context) {
+    // On détermine le titre du champ localité/village
+    final isOuagaBoboQuartier = _isOuagaBobo(communeSelected) &&
+        quartierSelected != null &&
+        quartierSelected!.isNotEmpty;
+    final champLocalisationLabel =
+        isOuagaBoboQuartier ? "Localité" : "Village apicole";
+    final champLocalisationValue =
+        isOuagaBoboQuartier ? localiteDisplay : villageSelected;
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Contrôle de la collecte"),
@@ -306,24 +348,24 @@ class _ControleFormPageState extends State<ControleFormPage>
                         ),
                         SizedBox(height: 9),
 
-                        // Village apicole - prérempli & désactivé
-                        _label("Village apicole"),
+                        // Village apicole OU Localité
+                        _label(champLocalisationLabel),
                         DropdownButtonFormField<String>(
-                          value: villageSelected,
+                          value: champLocalisationValue,
                           items: [
-                            if (villageSelected != null &&
-                                villageSelected!.isNotEmpty)
+                            if (champLocalisationValue != null &&
+                                champLocalisationValue!.isNotEmpty)
                               DropdownMenuItem(
-                                  value: villageSelected,
-                                  child: Text(villageSelected!)),
+                                  value: champLocalisationValue,
+                                  child: Text(champLocalisationValue!)),
                           ],
                           onChanged: null,
                           decoration: InputDecoration(
                               filled: true, fillColor: Colors.amber[50]),
                           validator: (v) =>
-                              v == null ? "Sélectionner le village" : null,
-                          disabledHint: villageSelected != null
-                              ? Text(villageSelected!)
+                              v == null ? "Sélectionner la localité" : null,
+                          disabledHint: champLocalisationValue != null
+                              ? Text(champLocalisationValue!)
                               : null,
                         ),
                         SizedBox(height: 9),
@@ -384,7 +426,7 @@ class _ControleFormPageState extends State<ControleFormPage>
                         ),
                         SizedBox(height: 9),
 
-                        // Poids du contenant
+                        // Poids du contenant & Poids de l'ensemble
                         Row(
                           children: [
                             Expanded(

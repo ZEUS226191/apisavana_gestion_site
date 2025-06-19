@@ -52,6 +52,18 @@ class _FiltrageFormPageState extends State<FiltrageFormPage> {
     final unite = widget.collecte['unite'] ?? 'kg';
     final quantiteMaxPourFiltrage = quantiteRestante;
 
+    // ------------ GESTION LOCALITE POUR AFFICHAGE (comme extraction) -------------
+    final commune = widget.collecte['commune']?.toString() ?? "";
+    final quartier = widget.collecte['quartier']?.toString() ?? "";
+    final village = widget.collecte['village']?.toString() ?? "";
+    String localiteAffichage;
+    if (commune.isNotEmpty && quartier.isNotEmpty) {
+      localiteAffichage = "$commune | $quartier";
+    } else {
+      localiteAffichage = village.isNotEmpty ? village : "-";
+    }
+    // ------------------------------------------------------------------------------
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -117,8 +129,8 @@ class _FiltrageFormPageState extends State<FiltrageFormPage> {
               _infoRow(Icons.spa, "Florale",
                   formatFlorale(widget.collecte['predominanceFlorale'])),
               SizedBox(height: 5),
-              _infoRow(
-                  Icons.villa, "Village", widget.collecte['village'] ?? "-"),
+              // ----------- GESTION VILLAGE / LOCALITE AFFICHEE ----------
+              _infoRow(Icons.villa, "Localité", localiteAffichage),
               SizedBox(height: 16),
               _label("Date de filtrage / maturation", icon: Icons.event),
               InkWell(
@@ -262,8 +274,11 @@ class _FiltrageFormPageState extends State<FiltrageFormPage> {
 
                       final now = DateTime.now();
 
+                      // Ajoute achatId et detailIndex si présents pour clé filtrage unique
                       final filtrageData = {
                         "collecteId": widget.collecte['id'] ?? '',
+                        "achatId": widget.collecte['achatId'] ?? '',
+                        "detailIndex": widget.collecte['detailIndex'] ?? '',
                         "lot": lot,
                         "dateFiltrage": dateFiltrage,
                         "quantiteEntree": newCumulEntree,
@@ -271,7 +286,27 @@ class _FiltrageFormPageState extends State<FiltrageFormPage> {
                         "statutFiltrage": statutFiltrage,
                         "quantiteRestante": reste < 0 ? 0 : reste,
                         "createdAt": now,
+                        // Ajoute la localisation :
+                        "village": widget.collecte['village'] ?? "",
+                        "commune": widget.collecte['commune'] ?? "",
+                        "quartier": widget.collecte['quartier'] ?? "",
                       };
+
+                      // Calcul expirationFiltrage : date de filtrage (jour du formulaire mais heure/minute courantes) + 30min
+                      DateTime? expirationFiltrage;
+                      if (statutFiltrage == "Filtrage total" &&
+                          dateFiltrage != null) {
+                        final current = DateTime.now();
+                        expirationFiltrage = DateTime(
+                          dateFiltrage!.year,
+                          dateFiltrage!.month,
+                          dateFiltrage!.day,
+                          current.hour,
+                          current.minute,
+                          current.second,
+                        ).add(const Duration(minutes: 30));
+                        filtrageData["expirationFiltrage"] = expirationFiltrage;
+                      }
 
                       if (filtrageId != null) {
                         // update
@@ -296,6 +331,7 @@ class _FiltrageFormPageState extends State<FiltrageFormPage> {
                         "filtré": reste <= 0.1,
                         "quantiteEntree": newCumulEntree,
                         "quantiteFiltree": newCumulFiltre,
+                        "expirationFiltrage": expirationFiltrage,
                       });
 
                       Get.snackbar("Succès",
